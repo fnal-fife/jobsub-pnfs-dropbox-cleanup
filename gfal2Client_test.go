@@ -16,6 +16,7 @@ func TestParseDateStampToTime(t *testing.T) {
 		expectedErr error
 	}
 
+	g := new(gfal2Client)
 	now := time.Now()
 	curYear := now.Year()
 
@@ -64,7 +65,7 @@ func TestParseDateStampToTime(t *testing.T) {
 		t.Run(
 			test.description,
 			func(t *testing.T) {
-				result, err := parseDateStampToTime(test.input)
+				result, err := g.parseDateStampToTime(test.input)
 				if test.expectedErr != nil {
 					var err2 *time.ParseError
 					assert.ErrorAs(t, err, &err2)
@@ -100,12 +101,14 @@ func adjustAnswerYearIfNeeded(t time.Time) time.Time {
 	return t
 }
 
-func TestParsePermsToDirectoryFlag(t *testing.T) {
+func TestGfal2ClientParsePermsToDirectoryFlag(t *testing.T) {
 	type testCase struct {
 		input       string
 		isDir       bool
 		expectedErr error
 	}
+
+	g := new(gfal2Client)
 
 	testCases := []testCase{
 		{
@@ -129,7 +132,7 @@ func TestParsePermsToDirectoryFlag(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("Test%d", idx),
 			func(t *testing.T) {
-				result, err := parsePermsToDirectoryFlag(test.input)
+				result, err := g.parsePermsToDirectoryFlag(test.input)
 				if test.expectedErr != nil {
 					assert.ErrorIs(t, err, test.expectedErr)
 					return
@@ -140,12 +143,13 @@ func TestParsePermsToDirectoryFlag(t *testing.T) {
 	}
 }
 
-func TestScanDropboxLineToFileEntry(t *testing.T) {
+func TestGfal2ClientFileListingToFileEntry(t *testing.T) {
 	type testCase struct {
 		description       string
 		line              string
 		expectedFileEntry *FileEntry
 	}
+	g := new(gfal2Client)
 
 	testCases := []testCase{
 		{
@@ -182,7 +186,7 @@ func TestScanDropboxLineToFileEntry(t *testing.T) {
 		t.Run(
 			test.description,
 			func(t *testing.T) {
-				entry, _ := scanDropboxLineToFileEntry(test.line)
+				entry, _ := g.fileListingToFileEntry(test.line)
 				assert.Equal(t, test.expectedFileEntry, entry)
 			},
 		)

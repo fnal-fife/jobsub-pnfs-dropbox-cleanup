@@ -15,7 +15,9 @@ var (
 	dateWithYearLayout       string = "Jan 2 2006"
 )
 
-func scanDropboxLineToFileEntry(line string) (*FileEntry, error) {
+type gfal2Client struct{}
+
+func (g *gfal2Client) fileListingToFileEntry(line string) (*FileEntry, error) {
 	var err error
 	lineParts := lineRegex.FindStringSubmatch(line)
 	if lineParts == nil {
@@ -26,12 +28,12 @@ func scanDropboxLineToFileEntry(line string) (*FileEntry, error) {
 	perms := lineParts[1]
 	dateString := lineParts[6]
 
-	f.isDirectory, err = parsePermsToDirectoryFlag(perms)
+	f.isDirectory, err = g.parsePermsToDirectoryFlag(perms)
 	if err != nil {
 		return nil, ErrParseLine
 	}
 
-	f.created, err = parseDateStampToTime(dateString)
+	f.created, err = g.parseDateStampToTime(dateString)
 	if err != nil {
 		return nil, ErrParseLine
 	}
@@ -39,7 +41,7 @@ func scanDropboxLineToFileEntry(line string) (*FileEntry, error) {
 	return f, nil
 }
 
-func parsePermsToDirectoryFlag(perms string) (bool, error) {
+func (g *gfal2Client) parsePermsToDirectoryFlag(perms string) (bool, error) {
 	if len(perms) != 10 {
 		return false, ErrMalformedPerms
 	}
@@ -55,7 +57,7 @@ func parsePermsToDirectoryFlag(perms string) (bool, error) {
 	return false, nil
 }
 
-func parseDateStampToTime(dateString string) (time.Time, error) {
+func (g *gfal2Client) parseDateStampToTime(dateString string) (time.Time, error) {
 	var rawDateStamp time.Time
 	var err error
 	// See if our dateString matches the "Jan  2 15:04 format"

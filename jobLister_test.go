@@ -9,6 +9,34 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type testFileString struct {
+	filename string
+	isError  bool
+}
+
+func newTestJobLister(queryError bool, filestrings ...testFileString) *testJobLister {
+	attr := "FILE_ATTRIBUTE"
+	g := &testJobLister{
+		queryError: queryError,
+	}
+
+	g.fileErrors = make(map[string]bool)
+
+	if len(filestrings) == 0 {
+		g.files = []testFileString{}
+	}
+
+	for _, file := range filestrings {
+		job := make(map[string][]byte)
+
+		g.fileErrors[file.filename] = file.isError
+		job[attr] = []byte(file.filename)
+		g.jobs = append(g.jobs, job)
+	}
+
+	return g
+}
+
 type testJobLister struct {
 	queryError bool
 	jobs       []map[string][]byte

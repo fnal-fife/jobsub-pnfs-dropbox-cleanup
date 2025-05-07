@@ -48,36 +48,40 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 	c := exec.CommandContext(ctx, "gfal-ls", cmdArgs...)
 	c.Env = environ
 
-	fmt.Println("Running command:", c.String())
+	// fmt.Println("Running command:", c.String())
 	stdoutStderr, err := c.CombinedOutput()
 	// fmt.Println("Command output:", string(stdoutStderr))
 	if err != nil {
 		// Handle error
-		fmt.Println("Error running command:", err)
+		fmt.Println("error running command:", err)
 		return nil, err
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(stdoutStderr))
 	scanner.Split(bufio.ScanLines) // Tokenize by line
 
-	errors := make([]error, 0)
+	errs := make([]error, 0)
 
 	for scanner.Scan() {
-		// fmt.Println("File count left:", fileCountLeft)
+		fmt.Println("File count left:", fileCountLeft)
 		// fmt.Println("Length of dirContents:", len(dirContents))
 		if fileCountLeft == 0 {
-			// TODO This should be a specific error
-			return dirContents, nil
+			// TODO Need to handle case where we have a directory that's not empty, but we haven't registered any files yet
+			return dirContents, errFileCountLimitExceeded
 		}
 		fileCountLeft--
 		line := scanner.Text()
 		// fmt.Println(line)
 
 		entry, err := g.fileListingToFileEntry(line)
+		if errors.Is(err, errFileCountLimitExceeded) {
+			// We exceeded our file count limit, so we should stop
+			return dirContents, err
+		}
 		if err != nil {
 			// Handle error: print that there's an issue
-			fmt.Println("Error parsing line:", err)
-			errors = append(errors, err)
+			fmt.Println("error parsing line:", err)
+			errs = append(errs, err)
 			continue
 		}
 		// fmt.Printf("Entry name:%s\n", entry.filename)
@@ -93,7 +97,7 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 			if err != nil {
 				// Skip this directory
 				// Handle error: print that there's an issue
-				errors = append(errors, err)
+				errs = append(errs, err)
 				continue
 			}
 			entry.containsFiles = files
@@ -106,8 +110,8 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 	}
 
 	// If we had any errors, we should tell the caller
-	if len(errors) > 0 {
-		return dirContents, fmt.Errorf("errors occurred while processing: %v", errors)
+	if len(errs) > 0 {
+		return dirContents, fmt.Errorf("errors occurred while processing: %v", errs)
 	}
 
 	return dirContents, nil
@@ -131,9 +135,9 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 // 		}
 // 		fileEntries = append(fileEntries, entry)
 // 	}
-// 	if scanner.Err() != nil {
+// 	if scanner.err() != nil {
 // 		// Handle error
-// 		return nil, scanner.Err()
+// 		return nil, scanner.err()
 // 	}
 // 	return fileEntries, nil
 // }
@@ -142,7 +146,7 @@ func (g *gfal2Client) fileListingToFileEntry(line string) (*FileEntry, error) {
 	var err error
 	lineParts := lineRegex.FindStringSubmatch(line)
 	if lineParts == nil {
-		return nil, ErrParseLine
+		return nil, errParseLine
 	}
 
 	f := &FileEntry{filename: strings.TrimSpace(lineParts[7])}
@@ -151,12 +155,12 @@ func (g *gfal2Client) fileListingToFileEntry(line string) (*FileEntry, error) {
 
 	f.isDirectory, err = g.parsePermsToDirectoryFlag(perms)
 	if err != nil {
-		return nil, ErrParseLine
+		return nil, errParseLine
 	}
 
 	f.created, err = g.parseDateStampToTime(dateString)
 	if err != nil {
-		return nil, ErrParseLine
+		return nil, errParseLine
 	}
 
 	return f, nil
@@ -164,12 +168,12 @@ func (g *gfal2Client) fileListingToFileEntry(line string) (*FileEntry, error) {
 
 func (g *gfal2Client) parsePermsToDirectoryFlag(perms string) (bool, error) {
 	if len(perms) != 10 {
-		return false, ErrMalformedPerms
+		return false, errMalformedPerms
 	}
 
 	validPrefixes := []string{"d", "-"}
 	if !slices.Contains(validPrefixes, string(perms[0])) {
-		return false, ErrMalformedPerms
+		return false, errMalformedPerms
 	}
 
 	if strings.HasPrefix(perms, "d") {
@@ -202,6 +206,7 @@ func (g *gfal2Client) parseDateStampToTime(dateString string) (time.Time, error)
 
 // TODO rename this
 var (
-	ErrParseLine      = errors.New("could not parse line")
-	ErrMalformedPerms = errors.New("perms string is malformed")
+	errParseLine              = errors.New("could not parse line")
+	errMalformedPerms         = errors.New("perms string is malformed")
+	errFileCountLimitExceeded = errors.New("file parse limit exceeded")
 )

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -57,11 +58,19 @@ func main() {
 
 	source := ***REMOVED***
 	files, err := client.getFilesTree(ctx, source, nil)
-	if err != nil {
+	switch {
+	case errors.Is(err, errFileCountLimitExceeded):
+		fmt.Println("file count limit exceeded. Stopping collecting files now")
+	case err != nil:
 		fmt.Println("error getting files list:", err)
 		// Handle error
 		return
+	default:
+		// Nil error
 	}
+
+	// Note - if we exceed file limit, we may have directory that actually has files, but we didn't register them as entries.  We should make sure to
+	// not crash out if that's the case, and just continue so the next run can clear them out
 
 	for _, file := range files {
 		fmt.Printf("File entry:%s\n\n", file.String())

@@ -1,10 +1,90 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
 	"time"
 )
 
 var now = time.Now()
+
+var experiment = "nova"
+
+var exptNameOverride = map[string]string{
+	"gm2": "GM2",
+}
+
+func main() {
+	ctx := context.Background()
+	// Get token
+	cmdArgs := []string{
+		"-a",
+		"htvaultprod.fnal.gov",
+		"-i",
+		experiment,
+	}
+	cmd := exec.CommandContext(ctx, "htgettoken", cmdArgs...)
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println("error running htgettoken:", err)
+		// Handle error
+		return
+	}
+
+	// Get files
+	addedEnvironment := []string{
+		"BEARER_TOKEN_FILE=/run/user/10610/bt_u10610",
+	}
+	tokenBytes, err := os.ReadFile("/run/user/10610/bt_u10610")
+	if err != nil {
+		fmt.Println("error reading token file:", err)
+		// Handle error
+		return
+	}
+	tokenString := string(tokenBytes)
+	addedEnvironment = append(addedEnvironment, "BEARER_TOKEN="+tokenString)
+
+	client := &gfal2Client{
+		addedEnvironment: addedEnvironment,
+	}
+
+	exptArea := experiment
+	if override, ok := exptNameOverride[experiment]; ok {
+		exptArea = override
+	}
+
+	source := "https://fndcadoor.fnal.gov:2880/" + exptArea + "/resilient/jobsub_stage/"
+	files, err := client.getFilesTree(ctx, source, nil)
+	if err != nil {
+		fmt.Println("error getting files list:", err)
+		// Handle error
+		return
+	}
+
+	for _, file := range files {
+		fmt.Printf("File entry:%s\n\n", file.String())
+	}
+	// entries, err := client.parseOutputToFileEntries(ctx, out)
+	// if err != nil {
+	// 	fmt.Println("error parsing output to file entries:", err)
+	// 	// Handle error
+	// 	return
+	// }
+
+	// Check files
+	// walkDirFunc := func(path string, info os.FileInfo, err error) error {
+
+	// for _, entry := range entries {
+	// 	if entry != nil {
+	// 		fmt.Printf("File entry:\nname:%s\ndate:%s\nisDir:%t", entry.filename, entry.created, entry.isDirectory)
+	// 		if entry.isDirectory {
+	// 			fmt.Println("Looking inside directory")
+	// 			source1: =
+	// 	}
+	// }
+}
 
 /*
 1) Have vault tokens provided by managed tokens?

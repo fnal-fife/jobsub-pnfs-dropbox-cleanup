@@ -88,6 +88,36 @@ func main() {
 	for _, file := range files {
 		fmt.Printf("Filename: %s, isRecent:%t\n", file.Name(), fileIsRecent(file))
 	}
+
+	// Now, we need to get the condor job files
+	jobFiles := make([]string, 0)
+	schedds, err := getCondorSchedds(ctx, scheddConstraint)
+	if err != nil {
+		// TODO Handle error
+		fmt.Println("error getting condor schedds:", err)
+		return
+	}
+
+	// sch := &CondorSchedd{name: schedd}
+	for _, sch := range schedds {
+		ads, err := sch.getPNFSJobsForExperiment(ctx, experiment)
+		if err != nil {
+			// Handle error
+			fmt.Println("error getting PNFS jobs:", err)
+			continue
+		}
+		for _, ad := range ads {
+			scheddFiles, err := sch.getDropboxFilesFromJob(ad)
+			if err != nil {
+				// Handle error
+				fmt.Println("error getting dropbox files from job:", err)
+				continue
+			}
+			jobFiles = append(jobFiles, scheddFiles...)
+		}
+	}
+
+	fmt.Println("Job files:", jobFiles) // TODO
 	// entries, err := client.parseOutputToFileEntries(ctx, out)
 	// if err != nil {
 	// 	fmt.Println("error parsing output to file entries:", err)

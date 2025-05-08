@@ -1,27 +1,68 @@
 package main
 
 import (
+	"context"
 	"errors"
-	"io"
+	"fmt"
 	"strings"
+
+	condor "github.com/retzkek/htcondor-go"
+	classad "github.com/retzkek/htcondor-go/classad"
 )
 
-type CondorSchedd struct {
+func getCondorSchedds(ctx context.Context, constraint string) ([]*CondorSchedd, error) {
+	cmd := condor.NewCommand(***REMOVED***)
+	fmt.Println("Running command:", cmd.MakeArgs())
+	ads, err := cmd.RunWithContext(ctx)
+	if err != nil {
+		// TODO Handle Error
+		return nil, err
+	}
+	schedds := make([]*CondorSchedd, 0, len(ads))
+	for _, ad := range ads {
+		name, ok := ad["Name"]
+		if !ok {
+			// TODO Handle error
+			continue
+		}
+		schedd := &CondorSchedd{
+			name: name.String(),
+		}
+		schedds = append(schedds, schedd)
+	}
+	return schedds, nil
 }
 
-func (c *CondorSchedd) getDropboxFilesFromJob(j map[string]io.Reader) ([]string, error) {
+type CondorSchedd struct {
+	name string
+}
+
+func (c *CondorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string) ([]classad.ClassAd, error) {
+	constraint := "Jobsub_Group==\"" + experiment + "\"" + " && !IsUndefined(PNFS_INPUT_FILES)"
+
+	cmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(constraint)
+	fmt.Println("Running command:", cmd.MakeArgs())
+	ads, err := cmd.RunWithContext(ctx)
+	if err != nil {
+		// Handle Error
+		return nil, err
+	}
+	return ads, nil
+}
+
+func (c *CondorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, error) {
 	attribute := "PNFS_INPUT_FILES"
-	val, ok := j[attribute]
+	val, ok := jobAd[attribute]
 	if !ok {
 		return nil, ErrMissingJobDropboxFiles
 	}
 
-	b := new(strings.Builder)
-	_, err := io.Copy(b, val)
-	if err != nil {
-		return nil, err
-	}
-	rawSlice := strings.Split((b.String()), ",")
+	// b := new(strings.Builder)
+	// _, err := io.Copy(b, val)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	rawSlice := strings.Split((val.String()), ",")
 	finalSlice := make([]string, 0, len(rawSlice))
 
 	for _, elt := range rawSlice {

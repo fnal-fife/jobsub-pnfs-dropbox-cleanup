@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path"
@@ -33,7 +34,7 @@ var (
 	fileCountLeft       uint = totalFileCountLimit
 )
 
-// TODO: implement this
+// TODO: Can this be implemented using a fs.WalkDirFunc?
 // Recursive
 func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirContents []*FileEntry) ([]*FileEntry, error) {
 	// Setup environment
@@ -45,10 +46,11 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 	// Run command
 	cmdArgs := []string{"-l", source}
 
+	// gfal-ls -l <source>
 	c := exec.CommandContext(ctx, "gfal-ls", cmdArgs...)
 	c.Env = environ
 
-	// fmt.Println("Running command:", c.String())
+	fmt.Println("Running command:", c.String())
 	stdoutStderr, err := c.CombinedOutput()
 	// fmt.Println("Command output:", string(stdoutStderr))
 	if err != nil {
@@ -62,18 +64,26 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 
 	errs := make([]error, 0)
 
+	sourceURL, err := url.Parse(source)
+	// TODO Make this more robust
+	if err != nil {
+		return nil, err
+	}
+
 	for scanner.Scan() {
 		fmt.Println("File count left:", fileCountLeft)
 		// fmt.Println("Length of dirContents:", len(dirContents))
 		if fileCountLeft == 0 {
-			// TODO Need to handle case where we have a directory that's not empty, but we haven't registered any files yet
 			return dirContents, errFileCountLimitExceeded
 		}
 		fileCountLeft--
 		line := scanner.Text()
 		// fmt.Println(line)
 
-		entry, err := g.fileListingToFileEntry(line)
+		entry, err := g.fileListingToFileEntry(line, func(s string) string {
+			return path.Join("/pnfs", sourceURL.Path, s)
+			// return s // NOOP
+		})
 		if errors.Is(err, errFileCountLimitExceeded) {
 			// We exceeded our file count limit, so we should stop
 			return dirContents, err
@@ -88,9 +98,11 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 
 		if entry.isDirectory {
 			// TODO Make this better later
-			sourceParts := strings.SplitN(source, "://", 2)
-			newPath := path.Join(sourceParts[1], entry.filename)
-			newSource := sourceParts[0] + "://" + newPath
+			// Strip off leading /pnfs/
+			urlFile := strings.TrimPrefix(entry.filename, "/pnfs")
+			newSource := sourceURL.Scheme + "://" + sourceURL.Host + urlFile
+			// newSource := sourceURL.Scheme + "://" + sourceURL.Host + "" + entry.filename
+			fmt.Println("New source:", newSource)
 
 			// Get files in this directory recursively
 			files, err := g.getFilesTree(ctx, newSource, nil)
@@ -142,14 +154,14 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 // 	return fileEntries, nil
 // }
 
-func (g *gfal2Client) fileListingToFileEntry(line string) (*FileEntry, error) {
+func (g *gfal2Client) fileListingToFileEntry(line string, filenameTransformFunc func(string) string) (*FileEntry, error) {
 	var err error
 	lineParts := lineRegex.FindStringSubmatch(line)
 	if lineParts == nil {
 		return nil, errParseLine
 	}
 
-	f := &FileEntry{filename: strings.TrimSpace(lineParts[7])}
+	f := &FileEntry{filename: filenameTransformFunc(strings.TrimSpace(lineParts[7]))}
 	perms := lineParts[1]
 	dateString := lineParts[6]
 

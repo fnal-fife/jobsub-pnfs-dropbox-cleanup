@@ -11,7 +11,12 @@ import (
 
 var now = time.Now()
 
-var experiment = "nova"
+// Vars we will eventually configure in a config file
+var (
+	experiment       = "gm2"
+	scheddConstraint = "IsJobsubLite == true && InDowntime == false"
+	// schedd           = ***REMOVED***
+)
 
 var exptNameOverride = map[string]string{
 	"gm2": "GM2",
@@ -28,6 +33,8 @@ func main() {
 	}
 	cmd := exec.CommandContext(ctx, "htgettoken", cmdArgs...)
 	err := cmd.Run()
+	// stdoutStderr, err := cmd.CombinedOutput()
+	// fmt.Println("Command output:", string(stdoutStderr))
 	if err != nil {
 		fmt.Println("error running htgettoken:", err)
 		// Handle error
@@ -69,11 +76,17 @@ func main() {
 		// Nil error
 	}
 
-	// Note - if we exceed file limit, we may have directory that actually has files, but we didn't register them as entries.  We should make sure to
-	// not crash out if that's the case, and just continue so the next run can clear them out
+	// TODO Note - if we exceed file limit, we may have directory that actually has files, but we didn't register them as entries.  We should make sure to
+	// not crash out if that's the case, and just continue so the next run can clear them out.  Maybe we return an error if the directory is not empty
 
 	for _, file := range files {
 		fmt.Printf("File entry:%s\n\n", file.String())
+	}
+
+	fmt.Println("Are the files not recent?")
+
+	for _, file := range files {
+		fmt.Printf("Filename: %s, isRecent:%t\n", file.Name(), fileIsRecent(file))
 	}
 	// entries, err := client.parseOutputToFileEntries(ctx, out)
 	// if err != nil {

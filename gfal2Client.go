@@ -36,7 +36,7 @@ var (
 
 // TODO: Can this be implemented using a fs.WalkDirFunc?
 // Recursive
-func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirContents []*FileEntry) ([]*FileEntry, error) {
+func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry) ([]*FileEntry, error) {
 	// Setup environment
 	environ := os.Environ()
 	environ = append(environ, g.addedEnvironment...)
@@ -71,7 +71,7 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 	}
 
 	for scanner.Scan() {
-		fmt.Println("File count left:", fileCountLeft)
+		fmt.Println("File count left:", fileCountLeft) // TODO Debug
 		// fmt.Println("Length of dirContents:", len(dirContents))
 		if fileCountLeft == 0 {
 			return dirContents, errFileCountLimitExceeded
@@ -94,6 +94,7 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 			errs = append(errs, err)
 			continue
 		}
+		entry.parent = parent
 		// fmt.Printf("Entry name:%s\n", entry.filename)
 
 		if entry.isDirectory {
@@ -105,7 +106,7 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 			fmt.Println("New source:", newSource)
 
 			// Get files in this directory recursively
-			files, err := g.getFilesTree(ctx, newSource, nil)
+			files, err := g.getFilesTree(ctx, newSource, nil, entry)
 			if err != nil {
 				// Skip this directory
 				// Handle error: print that there's an issue

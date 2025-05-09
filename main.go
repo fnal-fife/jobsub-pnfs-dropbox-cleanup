@@ -155,16 +155,27 @@ func main() {
 	// Maybe if we have performance problems, we first get the list of job files, then pass in a filter function to our tree-builder that could check
 	// for recency or job file membership
 	fmt.Println("Are the files not recent or being used by condor jobs?")
-	for _, file := range files {
-		if _, ok := jobFiles[file.Name()]; ok {
-			fmt.Println("File is in job files, so we will not delete it:", file.Name())
-			delete(fileMap, file.Name())
-			continue
-		}
-		if fileIsRecent(file) {
-			fmt.Println("File is recent, so we will not delete it:", file.Name())
-			delete(fileMap, file.Name())
-		}
+	for _, entry := range fileMap {
+		func(file *FileEntry) {
+			removeFileAndAncestorsFromDeleteList := func() {
+				delete(fileMap, file.Name())
+				parent := file.parent
+				for parent != nil {
+					fmt.Println("Removing parent from deletion list:", parent.Name())
+					delete(fileMap, parent.Name())
+					parent = parent.parent
+				}
+			}
+			if _, ok := jobFiles[file.Name()]; ok {
+				fmt.Println("File is in job files, so we will not delete it:", file.Name())
+				removeFileAndAncestorsFromDeleteList()
+				return
+			}
+			if fileIsRecent(file) {
+				fmt.Println("File is recent, so we will not delete it:", file.Name())
+				removeFileAndAncestorsFromDeleteList()
+			}
+		}(entry)
 	}
 
 	// TODO DEBUG

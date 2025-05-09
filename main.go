@@ -149,6 +149,30 @@ func main() {
 	}
 
 	fmt.Println("Job files:", jobFiles) // TODO
+
+	// Remove any files from our delete list that are in the list of job files or are recent
+	// We are iterating a second time to check if the files are recent, which may not be totally efficient, but it should improve readability
+	// Maybe if we have performance problems, we first get the list of job files, then pass in a filter function to our tree-builder that could check
+	// for recency or job file membership
+	fmt.Println("Are the files not recent or being used by condor jobs?")
+	for _, file := range files {
+		if _, ok := jobFiles[file.Name()]; ok {
+			fmt.Println("File is in job files, so we will not delete it:", file.Name())
+			delete(fileMap, file.Name())
+			continue
+		}
+		if fileIsRecent(file) {
+			fmt.Println("File is recent, so we will not delete it:", file.Name())
+			delete(fileMap, file.Name())
+		}
+	}
+
+	// TODO DEBUG
+	fmt.Println("Remaining files to delete:")
+	for name := range fileMap {
+		fmt.Printf("File name:%s\n", name)
+	}
+
 	// entries, err := client.parseOutputToFileEntries(ctx, out)
 	// if err != nil {
 	// 	fmt.Println("error parsing output to file entries:", err)

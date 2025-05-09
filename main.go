@@ -118,7 +118,8 @@ func main() {
 	// }
 
 	// Now, we need to get the condor job files
-	jobFiles := make([]string, 0)
+	fmt.Println("Getting condor job files")
+	jobFiles := make(map[string]struct{}, 0)
 	schedds, err := getCondorSchedds(ctx, scheddConstraint)
 	if err != nil {
 		// TODO Handle error
@@ -141,7 +142,9 @@ func main() {
 				fmt.Println("error getting dropbox files from job:", err)
 				continue
 			}
-			jobFiles = append(jobFiles, scheddFiles...)
+			for _, file := range scheddFiles {
+				jobFiles[file] = struct{}{}
+			}
 		}
 	}
 

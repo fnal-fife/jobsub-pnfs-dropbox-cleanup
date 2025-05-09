@@ -217,9 +217,41 @@ func (g *gfal2Client) parseDateStampToTime(dateString string) (time.Time, error)
 	return rawDateStamp, nil
 }
 
+func (g *gfal2Client) removeFile(ctx context.Context, source string, isDir bool) error {
+	// Setup environment
+	environ := os.Environ()
+	environ = append(environ, g.addedEnvironment...)
+
+	// Args
+	cmdArgs := make([]string, 0)
+	if isDir {
+		// gfal-rm -r <dir>
+		cmdArgs = append(cmdArgs, "-r")
+	}
+	cmdArgs = append(cmdArgs, source)
+
+	// gfal-rm <file>
+	// c := exec.CommandContext(ctx, "gfal-rm", cmdArgs...)
+	c := exec.CommandContext(ctx, "echo", cmdArgs...)
+	c.Env = environ
+
+	fmt.Println("Running command:", c.String()) // TODO Debug
+	err := c.Run()
+	if err != nil {
+		// Handle error
+		fmt.Println("error running command:", err)
+		return err
+	}
+	fmt.Println("Removed file:", source)
+
+	// TODO implement this
+	return nil
+}
+
 // TODO rename this
 var (
 	errParseLine              = errors.New("could not parse line")
 	errMalformedPerms         = errors.New("perms string is malformed")
 	errFileCountLimitExceeded = errors.New("file parse limit exceeded")
+	errRmNonEmptyDir          = errors.New("cannot remove non-empty directory")
 )

@@ -1,8 +1,6 @@
 module github.com/shreyb/jobsub-pnfs-dropbox-cleanup
 
-go 1.22.0
-
-toolchain go1.22.2
+go 1.23.0
 
 require (
 	github.com/lestrrat-go/jwx v1.2.7

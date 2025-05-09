@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -64,7 +68,7 @@ func main() {
 	}
 
 	source := "https://fndcadoor.fnal.gov:2880/" + exptArea + "/resilient/jobsub_stage/"
-	files, err := client.getFilesTree(ctx, source, nil, nil)
+	filesTree, err := client.getFilesTree(ctx, source, nil, nil)
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):
 		fmt.Println("file count limit exceeded. Stopping collecting files now")
@@ -77,7 +81,7 @@ func main() {
 	}
 
 	// TODO combine this line into fileMap creating line like for _, file := range flattenEntryTree(files) {....
-	flattenedFileEntries := flattenEntryTree(files) // TODO If performance suffers, throw out files after this executes. We shouldn't need files anymore after this
+	flattenedFileEntries := flattenEntryTree(filesTree) // TODO If performance suffers, throw out files after this executes. We shouldn't need files anymore after this
 
 	// TODO Note - if we exceed file limit, we may have directory that actually has files, but we didn't register them as entries.  We should make sure to
 	// not crash out if that's the case, and just continue so the next run can clear them out.  Maybe we return an error if the directory is not empty
@@ -184,6 +188,66 @@ func main() {
 		fmt.Printf("File name:%s\n", name)
 	}
 
+	// TODO Need to check if directory is empty before deleting it
+
+	// Recursively walk the tree and delete files if they're in our list to delete
+	deletedFiles := make([]string, 0, len(fileMap))
+	for _, entry := range filesTree {
+		if len(deletedFiles) == len(fileMap) {
+			fmt.Println("All files deleted.  Stopping.")
+			break
+		}
+
+		_deletedFiles, err := tryDeleteFilesRecursively(ctx, entry, client, fileMap, deletedFiles)
+		switch {
+		// We have an error, but we can continue
+
+		}
+		if err != nil {
+			var testErr *errDeleteFiles
+			if errors.As(err, &testErr) && len(_deletedFiles) != 0 {
+				// Some worked, some didn't
+				fmt.Println("Some files were deleted, some were not.  Continuing:")
+				continue
+			}
+			// TODO Handle error
+			fmt.Println("error deleting files recursively:", err)
+			continue
+		}
+		deletedFiles = append(deletedFiles, _deletedFiles...)
+		// For all of our deleted files , we need to remove them from the fileMap
+	}
+
+	// Maybe don't use this
+
+	// // Do a pass where we start with deleting files, then their parents if they're empty
+	// for filename := range maps.Keys(fileMap) {
+	// 	if fileMap[filename].isDirectory {
+	// 		fmt.Println("Skipping directory:", filename)
+	// 		continue
+	// 	}
+	// 	fmt.Println("Deleting file:", filename)
+	// 	// Remove the file
+	// 	err := client.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath), false)
+	// 	if err != nil {
+	// 		// TODO Handle error
+	// 		fmt.Println("error deleting file:", err)
+	// 		continue
+	// 	}
+	// 	// Remove the file from our map and from its parent's containsFiles slice
+	// 	slices.DeleteFunc(
+	// 		fileMap[filename].parent.containsFiles,
+	// 		func(f *FileEntry) bool {
+	// 			return f.Name() == filename
+	// 		},
+	// 	)
+	// 	// TODO implement thing where we delete parent and ancestors if it's empty
+	// 	delete(fileMap, filename)
+	// 	fmt.Println("File deleted:", filename)
+	// }
+
+	// // TODO Do a pass where we try to delete empty directories
+
 	// entries, err := client.parseOutputToFileEntries(ctx, out)
 	// if err != nil {
 	// 	fmt.Println("error parsing output to file entries:", err)
@@ -244,4 +308,160 @@ func flattenEntryTree(entries []*FileEntry) []*FileEntry {
 		}
 	}
 	return flatEntries
+}
+
+// TODO Move this to a different file
+func urlToFilename(URL string, filenameTransformFunc func(string) string) string {
+	sourceURL, err := url.Parse(URL)
+	if err != nil {
+		// TODO Handle error
+		fmt.Println("error parsing URL:", err)
+		return ""
+	}
+	return filenameTransformFunc(sourceURL.Path)
+}
+
+// TODO Move this to a different file
+func prependPNFSToPath(urlPath string) string {
+	// TODO this should get fed by configuration
+	return filepath.Join("/pnfs", urlPath)
+}
+
+func stripPNFSFromPath(pnfsPath string) string {
+	// parts := filepath.SplitList(pnfsPath)
+	// // TODO this should get fed by configuration
+	// fmt.Println("Parts:", parts)
+	// if parts[0] != "/pnfs" {
+	// 	return ""
+	// }
+	// return "/" + strings.Join(parts[1:], "/")
+	// TODO see if there's a better way than this
+	return strings.TrimPrefix(pnfsPath, "/pnfs")
+}
+
+// TODO Move this to a different file
+func PNFSToHTTPS(pnfsPath string, filenameTransformFunc func(string) string) string {
+	// TODO this should get fed by configuration
+	// TODO Make this better
+	u, err := url.Parse("https://fndcadoor.fnal.gov:2880")
+	if err != nil {
+		// TODO Handle error
+		fmt.Println("error parsing URL:", err)
+		return ""
+	}
+	// fmt.Println("URL String, ", u.String())
+	// fmt.Println("PNFS path, ", pnfsPath)
+	// return "https://fndcadoor.fnal.gov:2880" + filenameTransformFunc(pnfsPath)
+	return u.JoinPath(filenameTransformFunc(pnfsPath)).String()
+}
+
+// TODO Move this to a different file
+// Returns list of deleted files
+// TODO Implement this
+// func deleteEmptyDirectoriesAndAncestors(ctx context.Context, client *gfal2Client) error {
+// 	// TODO Implement this
+// 	return nil
+// }
+
+// TODO Move this to a different file
+// Check membership in deleteMap.  Maybe we pass this in as a dynamic filter function in a future version to make it more flexible and testable
+func tryDeleteFilesRecursively(ctx context.Context, entry *FileEntry, client *gfal2Client, deleteMap fileEntryMap, prevDeletedFiles []string) ([]string, error) {
+	var retErr *errDeleteFiles
+	errFiles := make([]string, 0)
+
+	// Cases
+	if entry.isDirectory {
+		// Case: If the entry is a directory and not empty, recursively call this function on each of its children
+		if len(entry.containsFiles) != 0 {
+			for _, childFile := range entry.containsFiles {
+				deletedFiles, err := tryDeleteFilesRecursively(ctx, childFile, client, deleteMap, prevDeletedFiles)
+				if err != nil {
+					var testErr *errDeleteFiles
+					// TODO Handle error properly. Should use errDeleteFiles
+					fmt.Println("error deleting files recursively. Will continue:", err)
+					if errors.As(err, &testErr) {
+						errFiles = append(errFiles, err.(*errDeleteFiles).files...)
+					}
+					continue
+				}
+
+				prevDeletedFiles = append(prevDeletedFiles, deletedFiles...)
+			}
+
+			if len(errFiles) != 0 {
+				retErr = &errDeleteFiles{files: errFiles}
+			}
+			if len(entry.containsFiles) != 0 {
+				fmt.Println("Not all files within this directory were deleted successfully. Will move to next entry:", entry.Name())
+				return prevDeletedFiles, retErr
+			}
+		}
+
+		// Case: If the entry is a directory and empty, delete it if it is in the deleteMap. This case also covers if we had a non-empty directory
+		// that we deleted all the files from
+		if _, ok := deleteMap[entry.Name()]; !ok {
+			fmt.Println("Directory is not in deleteMap, so we will not delete it:", entry.Name())
+			return prevDeletedFiles, nil
+		}
+
+		fmt.Println("Deleting empty directory:", entry.Name())
+		err := client.removeFile(ctx, PNFSToHTTPS(entry.Name(), stripPNFSFromPath), true)
+		if err != nil {
+			// TODO Handle error
+			fmt.Println("error deleting empty directory:", err)
+			errFiles = append(errFiles, entry.Name())
+			return prevDeletedFiles, &errDeleteFiles{files: errFiles}
+		}
+		fmt.Println("Deleted empty directory:", entry.Name())
+		// Remove the directory from parent's containsFiles slice
+		// TODO maybe make this a function or method
+		if entry.parent != nil {
+			slices.DeleteFunc(
+				entry.parent.containsFiles,
+				func(f *FileEntry) bool {
+					return f.Name() == entry.Name()
+				},
+			)
+		}
+		if len(errFiles) != 0 {
+			return prevDeletedFiles, &errDeleteFiles{files: errFiles}
+		}
+		return prevDeletedFiles, nil
+	}
+
+	// Base case - if the entry is a file, delete it
+
+	// Don't delete the file if it's not in the deleteMap
+	if _, ok := deleteMap[entry.Name()]; !ok {
+		fmt.Println("Directory is not in deleteMap, so we will not delete it:", entry.Name())
+		return prevDeletedFiles, nil
+	}
+
+	fmt.Println("Deleting file:", entry.Name())
+	err := client.removeFile(ctx, PNFSToHTTPS(entry.Name(), stripPNFSFromPath), false)
+	if err != nil {
+		// TODO Handle error
+		fmt.Println("error deleting file:", err)
+		return nil, &errDeleteFiles{files: []string{entry.Name()}}
+	}
+	// File was deleted successfully.  Remove it from parent's containsFiles slice
+	if entry.parent != nil {
+		slices.DeleteFunc(
+			entry.parent.containsFiles,
+			func(f *FileEntry) bool {
+				return f.Name() == entry.Name()
+			},
+		)
+	}
+
+	prevDeletedFiles = append(prevDeletedFiles, entry.Name())
+	return prevDeletedFiles, nil
+}
+
+type errDeleteFiles struct {
+	files []string
+}
+
+func (e *errDeleteFiles) Error() string {
+	return fmt.Sprintf("Could not delete files: %v", e.files)
 }

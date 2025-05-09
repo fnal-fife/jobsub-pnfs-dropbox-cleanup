@@ -64,7 +64,7 @@ func main() {
 	}
 
 	source := "https://fndcadoor.fnal.gov:2880/" + exptArea + "/resilient/jobsub_stage/"
-	files, err := client.getFilesTree(ctx, source, nil)
+	files, err := client.getFilesTree(ctx, source, nil, nil)
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):
 		fmt.Println("file count limit exceeded. Stopping collecting files now")

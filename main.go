@@ -76,18 +76,46 @@ func main() {
 		// Nil error
 	}
 
+	// TODO combine this line into fileMap creating line like for _, file := range flattenEntryTree(files) {....
+	flattenedFileEntries := flattenEntryTree(files) // TODO If performance suffers, throw out files after this executes. We shouldn't need files anymore after this
+
 	// TODO Note - if we exceed file limit, we may have directory that actually has files, but we didn't register them as entries.  We should make sure to
 	// not crash out if that's the case, and just continue so the next run can clear them out.  Maybe we return an error if the directory is not empty
 
-	for _, file := range files {
-		fmt.Printf("File entry:%s\n\n", file.String())
+	// TODO DEBUG.  Don't need to make this code better, because it's going away.  We just want to go down two levels
+	for _, file := range flattenedFileEntries {
+		fmt.Printf("File entry:%s\n\n", file)
+		// level := 0
+		// fmt.Printf("File entry, level %d:%s\n\n", level, file)
+		// if len(file.containsFiles) > 0 {
+		// 	level++
+		// 	for _, subFile := range file.containsFiles {
+		// 		fmt.Printf("File entry, level %d:%s\n\n", level, subFile)
+		// 		if len(subFile.containsFiles) > 0 {
+		// 			level++
+		// 			for _, subSubFile := range subFile.containsFiles {
+		// 				fmt.Printf("File entry, level %d:%s\n\n", level, subSubFile)
+		// 			}
+		// 			level--
+		// 		}
+		// 		level--
+		// 	}
+		// }
 	}
 
-	fmt.Println("Are the files not recent?")
-
-	for _, file := range files {
-		fmt.Printf("Filename: %s, isRecent:%t\n", file.Name(), fileIsRecent(file))
+	// Create a file map to hold the filenames and quickly eliminate files we don't want to delete
+	fileMap := make(fileEntryMap, 0)
+	for _, file := range flattenedFileEntries {
+		fileMap[file.Name()] = file
 	}
+
+	// for _, file := range files {
+	// 	fmt.Printf("File entry:%s\n\n", file.String())
+	// }
+
+	// for _, file := range files {
+	// 	fmt.Printf("Filename: %s, isRecent:%t\n", file.Name(), fileIsRecent(file))
+	// }
 
 	// Now, we need to get the condor job files
 	jobFiles := make([]string, 0)
@@ -163,3 +191,19 @@ drwxrwxrwx   0 0     0             0 Apr  6  2023 bogus_dir
 
 // "-rwxrwxrwx   0 0     0            50 Sep 26 14:55 bogus_file.out"
 // "drwxrwxrwx   0 0     0             0 Apr  6  2022 bogus_dir"
+
+// TODO Move this to a different file
+type fileEntryMap map[string]*FileEntry
+
+// TODO Move this to a different file
+// TODO Write tests for this
+func flattenEntryTree(entries []*FileEntry) []*FileEntry {
+	flatEntries := make([]*FileEntry, 0)
+	for _, entry := range entries {
+		flatEntries = append(flatEntries, entry)
+		if len(entry.containsFiles) > 0 {
+			flatEntries = append(flatEntries, flattenEntryTree(entry.containsFiles)...)
+		}
+	}
+	return flatEntries
+}

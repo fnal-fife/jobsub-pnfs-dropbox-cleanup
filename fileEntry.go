@@ -16,6 +16,7 @@ type FileEntry struct {
 	created       time.Time
 	isDirectory   bool
 	containsFiles []*FileEntry
+	parent        *FileEntry
 }
 
 func fileIsRecent(f *FileEntry) bool {
@@ -61,5 +62,9 @@ func (f *FileEntry) Sys() any {
 }
 
 func (f *FileEntry) String() string {
-	return fmt.Sprintf("name:%s\tdate:%s\tisDir:%t\tcontainsFiles:%v", f.filename, f.created, f.isDirectory, f.containsFiles)
+	parentName := "nil"
+	if f.parent != nil {
+		parentName = f.parent.Name()
+	}
+	return fmt.Sprintf("name:%s\tdate:%s\tisDir:%t\tcontainsFiles:%v\tparentName:%s\n", f.filename, f.created, f.isDirectory, f.containsFiles, parentName)
 }

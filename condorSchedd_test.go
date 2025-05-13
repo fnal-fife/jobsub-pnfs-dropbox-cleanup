@@ -38,7 +38,7 @@ func TestCondorScheddGetDropboxFilesFromJob(t *testing.T) {
 			"Missing key in job",
 			mapStringToClassAd(map[string]string{"PNFS_INPUT_FILES_WRONG": "/path/to/myfile,/path/to/myfile2, /path/to/myfile3"}),
 			nil,
-			ErrMissingJobDropboxFiles,
+			errMissingJobDropboxFiles,
 		},
 	}
 

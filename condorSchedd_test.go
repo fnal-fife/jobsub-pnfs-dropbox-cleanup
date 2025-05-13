@@ -1,17 +1,16 @@
 package main
 
 import (
-	"io"
-	"strings"
 	"testing"
 
+	"github.com/retzkek/htcondor-go/classad"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestCondorScheddGetDropboxFilesFromJob(t *testing.T) {
 	type testCase struct {
 		description   string
-		job           map[string]io.Reader
+		job           map[string]classad.Attribute
 		expectedFiles []string
 		expectedErr   error
 	}
@@ -19,25 +18,25 @@ func TestCondorScheddGetDropboxFilesFromJob(t *testing.T) {
 	testCases := []testCase{
 		{
 			"One file",
-			map[string]io.Reader{"PNFS_INPUT_FILES": strings.NewReader("/path/to/myfile")},
+			mapStringToClassAd(map[string]string{"PNFS_INPUT_FILES": "/path/to/myfile"}),
 			[]string{"/path/to/myfile"},
 			nil,
 		},
 		{
 			"Two files",
-			map[string]io.Reader{"PNFS_INPUT_FILES": strings.NewReader("/path/to/myfile,/path/to/myfile2")},
+			mapStringToClassAd(map[string]string{"PNFS_INPUT_FILES": "/path/to/myfile,/path/to/myfile2"}),
 			[]string{"/path/to/myfile", "/path/to/myfile2"},
 			nil,
 		},
 		{
 			"Three files, comma-space",
-			map[string]io.Reader{"PNFS_INPUT_FILES": strings.NewReader("/path/to/myfile,/path/to/myfile2, /path/to/myfile3")},
+			mapStringToClassAd(map[string]string{"PNFS_INPUT_FILES": "/path/to/myfile,/path/to/myfile2, /path/to/myfile3"}),
 			[]string{"/path/to/myfile", "/path/to/myfile2", "/path/to/myfile3"},
 			nil,
 		},
 		{
 			"Missing key in job",
-			map[string]io.Reader{"PNFS_INPUT_FILES_WRONG": strings.NewReader("/path/to/myfile,/path/to/myfile2, /path/to/myfile3")},
+			mapStringToClassAd(map[string]string{"PNFS_INPUT_FILES_WRONG": "/path/to/myfile,/path/to/myfile2, /path/to/myfile3"}),
 			nil,
 			ErrMissingJobDropboxFiles,
 		},
@@ -47,11 +46,19 @@ func TestCondorScheddGetDropboxFilesFromJob(t *testing.T) {
 		t.Run(
 			test.description,
 			func(t *testing.T) {
-				mySchedd := new(CondorSchedd)
+				mySchedd := new(condorSchedd)
 				files, err := mySchedd.getDropboxFilesFromJob(test.job)
 				assert.ErrorIs(t, err, test.expectedErr)
 				assert.Equal(t, test.expectedFiles, files)
 			},
 		)
 	}
+}
+
+func mapStringToClassAd(m map[string]string) classad.ClassAd {
+	ad := make(classad.ClassAd)
+	for k, v := range m {
+		ad[k] = classad.AttributeFromString(v)
+	}
+	return ad
 }

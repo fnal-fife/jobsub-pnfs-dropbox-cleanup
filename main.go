@@ -134,8 +134,11 @@ func main() {
 		slog.Error("error getting condor schedds:", "error", err)
 		return
 	}
+	if len(schedds) == 0 {
+		slog.Error("no condor schedds found. Exiting")
+		return
+	}
 
-	// sch := &CondorSchedd{name: schedd}
 	for _, sch := range schedds {
 		ads, err := sch.getPNFSJobsForExperiment(ctx, experiment)
 		if err != nil {
@@ -432,7 +435,7 @@ func urlToFilename(URL string, filenameTransformFunc func(string) string) string
 	sourceURL, err := url.Parse(URL)
 	if err != nil {
 		// TODO Handle error
-		fmt.Println("error parsing URL:", err)
+		slog.Error("error parsing URL", "error", err)
 		return ""
 	}
 	return filenameTransformFunc(sourceURL.Path)
@@ -462,7 +465,7 @@ func PNFSToHTTPS(pnfsPath string, filenameTransformFunc func(string) string) str
 	u, err := url.Parse(***REMOVED***)
 	if err != nil {
 		// TODO Handle error
-		fmt.Println("error parsing URL:", err)
+		slog.Error("error parsing URL", "error", err)
 		return ""
 	}
 	return u.JoinPath(filenameTransformFunc(pnfsPath)).String()
@@ -479,6 +482,10 @@ func PNFSToHTTPS(pnfsPath string, filenameTransformFunc func(string) string) str
 // TODO Move this to a different file
 // Check membership in deleteMap.  Maybe we pass this in as a dynamic filter function in a future version to make it more flexible and testable
 func tryDeleteFilesRecursively(ctx context.Context, entry *FileEntry, client *gfal2Client, deleteMap fileEntryMap, prevDeletedFiles []string) ([]string, error) {
+	// TODO DEBUG
+	fmt.Println("Trying to delete files recursively.  Entry:", entry.Name())
+	// END DEBUG
+
 	var retErr *errDeleteFiles
 	errFiles := make([]string, 0)
 
@@ -510,6 +517,8 @@ func tryDeleteFilesRecursively(ctx context.Context, entry *FileEntry, client *gf
 			}
 		}
 
+		entry.containsFiles = nil // Nil this out so that the GC can clean it up and reclaim memory
+
 		// Case: If the entry is a directory and empty, delete it if it is in the deleteMap. This case also covers if we had a non-empty directory
 		// that we deleted all the files from
 		if _, ok := deleteMap[entry.Name()]; !ok {
@@ -529,7 +538,7 @@ func tryDeleteFilesRecursively(ctx context.Context, entry *FileEntry, client *gf
 		// Remove the directory from parent's containsFiles slice
 		// TODO maybe make this a function or method
 		if entry.parent != nil {
-			slices.DeleteFunc(
+			entry.parent.containsFiles = slices.DeleteFunc(
 				entry.parent.containsFiles,
 				func(f *FileEntry) bool {
 					return f.Name() == entry.Name()

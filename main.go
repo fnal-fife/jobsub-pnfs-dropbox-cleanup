@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
+	"log/slog"
 	"net/url"
 	"os"
 	"os/exec"
@@ -214,39 +216,76 @@ func main() {
 			fmt.Println("error deleting files recursively:", err)
 			continue
 		}
-		deletedFiles = append(deletedFiles, _deletedFiles...)
-		// For all of our deleted files , we need to remove them from the fileMap
+		// Remove the file from our map and from its parent's containsFiles slice
+		if fileMap[filename].parent != nil {
+			fileMap[filename].parent.containsFiles = slices.DeleteFunc(
+				fileMap[filename].parent.containsFiles,
+				func(f *FileEntry) bool {
+					return f.Name() == filename
+				},
+			)
+		}
+		deletedFilenames = append(deletedFilenames, filename)
+		slog.Info("File deleted", "filename", filename)
 	}
 
-	// Maybe don't use this
+	for _, filename := range deletedFilenames {
+		delete(fileMap, filename)
+	}
 
-	// // Do a pass where we start with deleting files, then their parents if they're empty
+	slog.Info("Deleting empty directories")
+	deletedFilenames = make([]string, 0)
 	// for filename := range maps.Keys(fileMap) {
-	// 	if fileMap[filename].isDirectory {
-	// 		fmt.Println("Skipping directory:", filename)
-	// 		continue
-	// 	}
-	// 	fmt.Println("Deleting file:", filename)
-	// 	// Remove the file
-	// 	err := client.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath), false)
-	// 	if err != nil {
-	// 		// TODO Handle error
-	// 		fmt.Println("error deleting file:", err)
-	// 		continue
-	// 	}
-	// 	// Remove the file from our map and from its parent's containsFiles slice
-	// 	slices.DeleteFunc(
-	// 		fileMap[filename].parent.containsFiles,
-	// 		func(f *FileEntry) bool {
-	// 			return f.Name() == filename
-	// 		},
-	// 	)
-	// 	// TODO implement thing where we delete parent and ancestors if it's empty
-	// 	delete(fileMap, filename)
-	// 	fmt.Println("File deleted:", filename)
-	// }
+	for filename := range fileMap.AllDirNames() {
+		if len(fileMap[filename].containsFiles) != 0 {
+			slog.Info("Directory is not empty, so we will not delete it:", "dirName", filename)
+			continue
+		}
 
-	// // TODO Do a pass where we try to delete empty directories
+		slog.Debug("Deleting directory", "dirName", filename)
+		// Remove the file
+		err := client.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath), true)
+		if err != nil {
+			// TODO Handle error
+			slog.Error("error deleting directory", "error", err)
+			continue
+		}
+
+		deletedFilenames = append(deletedFilenames, filename)
+		slog.Info("Empty directory deleted", "dirName", filename)
+
+		// Keep walking up the tree and deleting empty directories recursively
+		// Remove the file from our map and from its parent's containsFiles slice
+		_parent := fileMap[filename].parent
+		for _parent != nil {
+			_parent.containsFiles = slices.DeleteFunc(
+				_parent.containsFiles,
+				func(f *FileEntry) bool {
+					return f.Name() == filename
+				},
+			)
+			// Check if the parent is empty. If not, we can stop
+			if len(_parent.containsFiles) != 0 {
+				slog.Debug("Parent is not empty, so we will not delete it", "dirName", _parent.Name())
+				break
+			}
+			// Delete parent directory, since we've established that it's empty
+			slog.Debug("Parent is empty, so we will delete it", "dirName", _parent.Name())
+			err := client.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath), true)
+			if err != nil {
+				// TODO Handle error
+				slog.Error("error deleting directory", "error", err)
+				break
+			}
+			deletedFilenames = append(deletedFilenames, filename)
+			_parent = _parent.parent
+		}
+	}
+
+	// Save some memory
+	for _, filename := range deletedFilenames {
+		delete(fileMap, filename)
+	}
 
 	// entries, err := client.parseOutputToFileEntries(ctx, out)
 	// if err != nil {
@@ -310,6 +349,63 @@ func flattenEntryTree(entries []*FileEntry) []*FileEntry {
 	return flatEntries
 }
 
+// TODO move somewhere else
+
+// Iterator to return all directory entries' names
+func (f fileEntryMap) AllDirNames() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for name := range f {
+			if f[name].isDirectory {
+				if !yield(name) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// TODO Move somewhere else
+// Iterator to return all directory entries
+func (f fileEntryMap) AllDirs() iter.Seq2[string, *FileEntry] {
+	return func(yield func(string, *FileEntry) bool) {
+		for name, entry := range f {
+			if entry.isDirectory {
+				if !yield(name, entry) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// TODO Move somewhere else
+// Iterator to return all non-directory entries
+func (f fileEntryMap) AllNonDirFilesNames() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for name := range f {
+			if !f[name].isDirectory {
+				if !yield(name) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// TODO Move somewhere else
+// Iterator to return all non-directory entries
+func (f fileEntryMap) AllNonDirFiles() iter.Seq2[string, *FileEntry] {
+	return func(yield func(string, *FileEntry) bool) {
+		for name, entry := range f {
+			if !entry.isDirectory {
+				if !yield(name, entry) {
+					return
+				}
+			}
+		}
+	}
+}
+
 // TODO Move this to a different file
 func urlToFilename(URL string, filenameTransformFunc func(string) string) string {
 	sourceURL, err := url.Parse(URL)
@@ -342,16 +438,12 @@ func stripPNFSFromPath(pnfsPath string) string {
 // TODO Move this to a different file
 func PNFSToHTTPS(pnfsPath string, filenameTransformFunc func(string) string) string {
 	// TODO this should get fed by configuration
-	// TODO Make this better
 	u, err := url.Parse(***REMOVED***)
 	if err != nil {
 		// TODO Handle error
 		fmt.Println("error parsing URL:", err)
 		return ""
 	}
-	// fmt.Println("URL String, ", u.String())
-	// fmt.Println("PNFS path, ", pnfsPath)
-	// return ***REMOVED*** + filenameTransformFunc(pnfsPath)
 	return u.JoinPath(filenameTransformFunc(pnfsPath)).String()
 }
 

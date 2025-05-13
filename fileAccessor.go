@@ -2,21 +2,21 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 )
 
 type FileAccessor interface {
-	getFilesList(source string) ([][]byte, error)
+	getFilesList(ctx context.Context, source string) ([][]byte, error)
 	fileListingToFileEntry(line io.Reader) (FileEntry, error)
-	// TODO
 	// removeFile(urlOrPath string) error
 	// removeDir(urlOrPath string) error
 }
 
 // GetDropboxFiles uses a FileAccessor to provide a slice of the files present at the path or URL given by the source string
-func GetDropboxFiles(f FileAccessor, source string) ([]FileEntry, error) {
-	fileListings, err := f.getFilesList(source)
+func GetDropboxFiles(ctx context.Context, f FileAccessor, source string) ([]FileEntry, error) {
+	fileListings, err := f.getFilesList(ctx, source)
 	if err != nil {
 		return nil, err
 	}

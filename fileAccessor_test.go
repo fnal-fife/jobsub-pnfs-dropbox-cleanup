@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"io"
 	"strings"
@@ -24,7 +25,7 @@ type testFileAccessor struct {
 	errorsByFileEntry      []bool
 }
 
-func (t *testFileAccessor) getFilesList(source string) ([][]byte, error) {
+func (t *testFileAccessor) getFilesList(ctx context.Context, source string) ([][]byte, error) {
 	if t.existsFileListingError {
 		return nil, errors.New("some generic file listing error")
 	}
@@ -51,6 +52,8 @@ func (t *testFileAccessor) fileListingToFileEntry(r io.Reader) (FileEntry, error
 }
 
 func TestGetDropboxFiles(t *testing.T) {
+	ctx := context.Background()
+
 	type testCase struct {
 		description string
 		FileAccessor
@@ -59,6 +62,7 @@ func TestGetDropboxFiles(t *testing.T) {
 	}
 
 	testCases := []testCase{
+		// TODO Add test cases for directories that contain other files and directories
 		{
 			"Mix of files and dirs, no errors",
 			newTestFileAccessor(
@@ -67,15 +71,21 @@ func TestGetDropboxFiles(t *testing.T) {
 						"/path/to/foo",
 						time.Date(2023, 4, 5, 6, 54, 32, 0, time.Local),
 						false,
+						nil,
+						nil,
 					},
 					{"/path/to/bardir",
 						time.Date(2023, 1, 2, 3, 45, 6, 0, time.Local),
 						true,
+						nil,
+						nil,
 					},
 					{
 						"/more/sub/dir/paths/to/baz",
 						time.Date(2023, 5, 6, 7, 12, 34, 0, time.Local),
 						false,
+						nil,
+						nil,
 					},
 				},
 				false,
@@ -86,15 +96,21 @@ func TestGetDropboxFiles(t *testing.T) {
 					"/path/to/foo",
 					time.Date(2023, 4, 5, 6, 54, 32, 0, time.Local),
 					false,
+					nil,
+					nil,
 				},
 				{"/path/to/bardir",
 					time.Date(2023, 1, 2, 3, 45, 6, 0, time.Local),
 					true,
+					nil,
+					nil,
 				},
 				{
 					"/more/sub/dir/paths/to/baz",
 					time.Date(2023, 5, 6, 7, 12, 34, 0, time.Local),
 					false,
+					nil,
+					nil,
 				},
 			},
 			true,
@@ -107,15 +123,21 @@ func TestGetDropboxFiles(t *testing.T) {
 						"/path/to/foo",
 						time.Date(2023, 4, 5, 6, 54, 32, 0, time.Local),
 						false,
+						nil,
+						nil,
 					},
 					{"/path/to/bardir",
 						time.Date(2023, 1, 2, 3, 45, 6, 0, time.Local),
 						true,
+						nil,
+						nil,
 					},
 					{
 						"/more/sub/dir/paths/to/baz",
 						time.Date(2023, 5, 6, 7, 12, 34, 0, time.Local),
 						false,
+						nil,
+						nil,
 					},
 				},
 				true,
@@ -132,15 +154,21 @@ func TestGetDropboxFiles(t *testing.T) {
 						"/path/to/foo",
 						time.Date(2023, 4, 5, 6, 54, 32, 0, time.Local),
 						false,
+						nil,
+						nil,
 					},
 					{"/path/to/bardir",
 						time.Date(2023, 1, 2, 3, 45, 6, 0, time.Local),
 						true,
+						nil,
+						nil,
 					},
 					{
 						"/more/sub/dir/paths/to/baz",
 						time.Date(2023, 5, 6, 7, 12, 34, 0, time.Local),
 						false,
+						nil,
+						nil,
 					},
 				},
 				false,
@@ -151,11 +179,15 @@ func TestGetDropboxFiles(t *testing.T) {
 					"/path/to/foo",
 					time.Date(2023, 4, 5, 6, 54, 32, 0, time.Local),
 					false,
+					nil,
+					nil,
 				},
 				{
 					"/more/sub/dir/paths/to/baz",
 					time.Date(2023, 5, 6, 7, 12, 34, 0, time.Local),
 					false,
+					nil,
+					nil,
 				},
 			},
 			true,
@@ -168,15 +200,21 @@ func TestGetDropboxFiles(t *testing.T) {
 						"/path/to/foo",
 						time.Date(2023, 4, 5, 6, 54, 32, 0, time.Local),
 						false,
+						nil,
+						nil,
 					},
 					{"/path/to/bardir",
 						time.Date(2023, 1, 2, 3, 45, 6, 0, time.Local),
 						true,
+						nil,
+						nil,
 					},
 					{
 						"/more/sub/dir/paths/to/baz",
 						time.Date(2023, 5, 6, 7, 12, 34, 0, time.Local),
 						false,
+						nil,
+						nil,
 					},
 				},
 				false,
@@ -191,7 +229,7 @@ func TestGetDropboxFiles(t *testing.T) {
 		t.Run(
 			test.description,
 			func(t *testing.T) {
-				files, err := GetDropboxFiles(test.FileAccessor, "")
+				files, err := GetDropboxFiles(ctx, test.FileAccessor, "")
 				if !test.expectedErrorNil {
 					assert.Error(t, err)
 				}

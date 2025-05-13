@@ -31,6 +31,7 @@ var exptNameOverride = map[string]string{
 func main() {
 	ctx := context.Background()
 	// Get token
+	slog.Debug("Ensuring token is available", "experiment", experiment)
 	cmdArgs := []string{
 		"-a",
 		***REMOVED***,
@@ -42,7 +43,7 @@ func main() {
 	// stdoutStderr, err := cmd.CombinedOutput()
 	// fmt.Println("Command output:", string(stdoutStderr))
 	if err != nil {
-		fmt.Println("error running htgettoken:", err)
+		slog.Error("error running htgettoken", "error", err)
 		// Handle error
 		return
 	}
@@ -53,7 +54,7 @@ func main() {
 	}
 	tokenBytes, err := os.ReadFile("/run/user/10610/bt_u10610")
 	if err != nil {
-		fmt.Println("error reading token file:", err)
+		slog.Error("error reading token file", "error", err)
 		// Handle error
 		return
 	}
@@ -70,16 +71,17 @@ func main() {
 	}
 
 	source := ***REMOVED***
+	slog.Debug("Getting files list", "source", source)
 	filesTree, err := client.getFilesTree(ctx, source, nil, nil)
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):
-		fmt.Println("file count limit exceeded. Stopping collecting files now")
+		slog.Error("file count limit exceeded. Stopping collecting files now")
 	case err != nil:
-		fmt.Println("error getting files list:", err)
-		// Handle error
+		slog.Error("error getting files list", "error", err)
 		return
 	default:
 		// Nil error
+		// TODO - do we need the default case?
 	}
 
 	// TODO combine this line into fileMap creating line like for _, file := range flattenEntryTree(files) {....
@@ -90,7 +92,7 @@ func main() {
 
 	// TODO DEBUG.  Don't need to make this code better, because it's going away.  We just want to go down two levels
 	for _, file := range flattenedFileEntries {
-		fmt.Printf("File entry:%s\n\n", file)
+		slog.Debug("File entry", "file", file.Name())
 		// level := 0
 		// fmt.Printf("File entry, level %d:%s\n\n", level, file)
 		// if len(file.containsFiles) > 0 {
@@ -124,12 +126,12 @@ func main() {
 	// }
 
 	// Now, we need to get the condor job files
-	fmt.Println("Getting condor job files")
+	slog.Debug("Getting condor job files")
 	jobFiles := make(map[string]struct{}, 0)
 	schedds, err := getCondorSchedds(ctx, scheddConstraint)
 	if err != nil {
 		// TODO Handle error
-		fmt.Println("error getting condor schedds:", err)
+		slog.Error("error getting condor schedds:", "error", err)
 		return
 	}
 
@@ -138,14 +140,14 @@ func main() {
 		ads, err := sch.getPNFSJobsForExperiment(ctx, experiment)
 		if err != nil {
 			// Handle error
-			fmt.Println("error getting PNFS jobs:", err)
+			slog.Error("error getting PNFS jobs:", "error", err, "schedd", sch.name)
 			continue
 		}
 		for _, ad := range ads {
 			scheddFiles, err := sch.getDropboxFilesFromJob(ad)
 			if err != nil {
 				// Handle error
-				fmt.Println("error getting dropbox files from job:", err)
+				slog.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name) // TODO Get job ID?
 				continue
 			}
 			for _, file := range scheddFiles {
@@ -154,66 +156,85 @@ func main() {
 		}
 	}
 
-	fmt.Println("Job files:", jobFiles) // TODO
+	slog.Debug("", "jobFiles", jobFiles) // TODO
 
 	// Remove any files from our delete list that are in the list of job files or are recent
 	// We are iterating a second time to check if the files are recent, which may not be totally efficient, but it should improve readability
 	// Maybe if we have performance problems, we first get the list of job files, then pass in a filter function to our tree-builder that could check
 	// for recency or job file membership
-	fmt.Println("Are the files not recent or being used by condor jobs?")
+	slog.Debug("Are the files not recent or being used by condor jobs?")
 	for _, entry := range fileMap {
 		func(file *FileEntry) {
 			removeFileAndAncestorsFromDeleteList := func() {
 				delete(fileMap, file.Name())
 				parent := file.parent
 				for parent != nil {
-					fmt.Println("Removing parent from deletion list:", parent.Name())
+					slog.Debug("Removing parent from deletion list", "fileEntry.parent", parent.Name())
 					delete(fileMap, parent.Name())
 					parent = parent.parent
 				}
 			}
 			if _, ok := jobFiles[file.Name()]; ok {
-				fmt.Println("File is in job files, so we will not delete it:", file.Name())
+				slog.Debug("File is in job files, so we will not delete it:", "filename", file.Name())
 				removeFileAndAncestorsFromDeleteList()
 				return
 			}
 			if fileIsRecent(file) {
-				fmt.Println("File is recent, so we will not delete it:", file.Name())
+				slog.Debug("File is recent, so we will not delete it:", "filename", file.Name())
 				removeFileAndAncestorsFromDeleteList()
 			}
 		}(entry)
 	}
 
 	// TODO DEBUG
-	fmt.Println("Remaining files to delete:")
+	slog.Debug("Remaining files to delete:")
 	for name := range fileMap {
-		fmt.Printf("File name:%s\n", name)
+		slog.Debug("", "filename", name)
 	}
 
 	// TODO Need to check if directory is empty before deleting it
 
+	// TODO this took a ton of memory. Let's do this the "dumber" way and see if it works better that way
 	// Recursively walk the tree and delete files if they're in our list to delete
-	deletedFiles := make([]string, 0, len(fileMap))
-	for _, entry := range filesTree {
-		if len(deletedFiles) == len(fileMap) {
-			fmt.Println("All files deleted.  Stopping.")
-			break
-		}
+	// deletedFiles := make([]string, 0, len(fileMap))
+	// for _, entry := range filesTree {
+	// 	if len(deletedFiles) == len(fileMap) {
+	// 		fmt.Println("All files deleted.  Stopping.")
+	// 		break
+	// 	}
 
-		_deletedFiles, err := tryDeleteFilesRecursively(ctx, entry, client, fileMap, deletedFiles)
-		switch {
-		// We have an error, but we can continue
+	// 	_deletedFiles, err := tryDeleteFilesRecursively(ctx, entry, client, fileMap, deletedFiles)
+	// 	if err != nil {
+	// 		var testErr *errDeleteFiles
+	// 		if errors.As(err, &testErr) && len(_deletedFiles) != 0 {
+	// 			// Some worked, some didn't
+	// 			fmt.Println("Some files were deleted, some were not.  Continuing:")
+	// 			continue
+	// 		}
+	// 		// TODO Handle error
+	// 		fmt.Println("error deleting files recursively:", err)
+	// 		continue
+	// 	}
+	// 	deletedFiles = append(deletedFiles, _deletedFiles...)
+	// 	// For all of our deleted files , we need to remove them from the fileMap
+	// }
 
-		}
+	// Note:  This isn't as slick as recursion, but the former used way more memory, and actually made the program get killed by the OOM killer
+	// Do a pass where we start with deleting files, then their parents if they're empty
+	slog.Info("Deleting files")
+	deletedFilenames := make([]string, 0)
+	// for filename := range maps.Keys(fileMap) {
+	for filename := range fileMap.AllNonDirFilesNames() {
+		// if fileMap[filename].isDirectory {
+		// 	fmt.Println("Skipping directory", filename)
+		// 	continue
+		// }
+		slog.Debug("Deleting file:", filename)
+		// Remove the file
+		err := client.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath), false)
 		if err != nil {
-			var testErr *errDeleteFiles
-			if errors.As(err, &testErr) && len(_deletedFiles) != 0 {
-				// Some worked, some didn't
-				fmt.Println("Some files were deleted, some were not.  Continuing:")
-				continue
-			}
 			// TODO Handle error
-			fmt.Println("error deleting files recursively:", err)
+			slog.Error("error deleting file", "error", err)
 			continue
 		}
 		// Remove the file from our map and from its parent's containsFiles slice

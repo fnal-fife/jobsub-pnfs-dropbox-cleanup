@@ -10,7 +10,7 @@ import (
 	classad "github.com/retzkek/htcondor-go/classad"
 )
 
-func getCondorSchedds(ctx context.Context, constraint string) ([]*CondorSchedd, error) {
+func getCondorSchedds(ctx context.Context, constraint string) ([]*condorSchedd, error) {
 	cmd := condor.NewCommand(***REMOVED***)
 	fmt.Println("Running command:", cmd.MakeArgs())
 	ads, err := cmd.RunWithContext(ctx)
@@ -18,14 +18,14 @@ func getCondorSchedds(ctx context.Context, constraint string) ([]*CondorSchedd, 
 		// TODO Handle Error
 		return nil, err
 	}
-	schedds := make([]*CondorSchedd, 0, len(ads))
+	schedds := make([]*condorSchedd, 0, len(ads))
 	for _, ad := range ads {
 		name, ok := ad["Name"]
 		if !ok {
 			// TODO Handle error
 			continue
 		}
-		schedd := &CondorSchedd{
+		schedd := &condorSchedd{
 			name: name.String(),
 		}
 		schedds = append(schedds, schedd)
@@ -33,11 +33,11 @@ func getCondorSchedds(ctx context.Context, constraint string) ([]*CondorSchedd, 
 	return schedds, nil
 }
 
-type CondorSchedd struct {
+type condorSchedd struct {
 	name string
 }
 
-func (c *CondorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string) ([]classad.ClassAd, error) {
+func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string) ([]classad.ClassAd, error) {
 	constraint := "Jobsub_Group==\"" + experiment + "\"" + " && !IsUndefined(PNFS_INPUT_FILES)"
 
 	cmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(constraint)
@@ -50,9 +50,11 @@ func (c *CondorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment 
 	return ads, nil
 }
 
-func (c *CondorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, error) {
+func (c *condorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, error) {
+	stringAd := jobAd.Strings()
+
 	attribute := "PNFS_INPUT_FILES"
-	val, ok := jobAd[attribute]
+	val, ok := stringAd[attribute]
 	if !ok {
 		return nil, ErrMissingJobDropboxFiles
 	}
@@ -62,7 +64,7 @@ func (c *CondorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, 
 	// if err != nil {
 	// 	return nil, err
 	// }
-	rawSlice := strings.Split((val.String()), ",")
+	rawSlice := strings.Split(val, ",")
 	finalSlice := make([]string, 0, len(rawSlice))
 
 	for _, elt := range rawSlice {

@@ -17,7 +17,7 @@ func TestParseDateStampToTime(t *testing.T) {
 	}
 
 	g := new(gfal2Client)
-	now := time.Now()
+	now, _ = time.ParseInLocation("2006-01-02 15:04:05", "2025-03-04 14:55:00", time.Local)
 	curYear := now.Year()
 
 	createFutureDateStringAndCorrectedTime := func() (string, time.Time) {
@@ -30,9 +30,15 @@ func TestParseDateStampToTime(t *testing.T) {
 
 	testCases := []testCase{
 		{
-			"Timestamp with time, no year",
+			"Timestamp with time, no year, expect previous year",
 			"Sep 26 14:55",
-			time.Date(curYear, 9, 26, 14, 55, 0, 0, time.Local),
+			time.Date(curYear-1, 9, 26, 14, 55, 0, 0, time.Local),
+			nil,
+		},
+		{
+			"Timestamp with time, no year, expect current year",
+			"Feb 26 14:55",
+			time.Date(curYear, 2, 26, 14, 55, 0, 0, time.Local),
 			nil,
 		},
 		{
@@ -124,7 +130,7 @@ func TestGfal2ClientParsePermsToDirectoryFlag(t *testing.T) {
 		{
 			"boogityboo",
 			false,
-			ErrMalformedPerms,
+			errMalformedPerms,
 		},
 	}
 
@@ -147,36 +153,48 @@ func TestGfal2ClientFileListingToFileEntry(t *testing.T) {
 	type testCase struct {
 		description       string
 		line              string
+		transformFunc     func(string) string
 		expectedFileEntry *FileEntry
 	}
 	g := new(gfal2Client)
+	noopTransformFunc := func(s string) string { return s }
 
 	testCases := []testCase{
+		// TODO Add test cases where we transform the filename
 		{
 			"File, no year on datestamp",
 			"-rwxrwxrwx   0 0     0            50 Sep 26 14:55 bogus_file.out",
+			noopTransformFunc,
 			&FileEntry{
 				"bogus_file.out",
 				adjustAnswerYearIfNeeded(time.Date(time.Now().Year(), 9, 26, 14, 55, 0, 0, time.Local)),
 				false,
+				nil,
+				nil,
 			},
 		},
 		{
 			"Directory, no year on datestamp",
 			"drwxrwxrwx   0 0     0            50 Sep 26 14:55 bogus_directory",
+			noopTransformFunc,
 			&FileEntry{
 				"bogus_directory",
 				adjustAnswerYearIfNeeded(time.Date(time.Now().Year(), 9, 26, 14, 55, 0, 0, time.Local)),
 				true,
+				nil,
+				nil,
 			},
 		},
 		{
 			"Timestamp with date, year",
 			"drwxrwxrwx   0 0     0             0 Apr  6  2022 bogus_dir",
+			noopTransformFunc,
 			&FileEntry{
 				"bogus_dir",
 				adjustAnswerYearIfNeeded(time.Date(2022, 4, 6, 0, 0, 0, 0, time.Local)),
 				true,
+				nil,
+				nil,
 			},
 		},
 	}
@@ -186,7 +204,7 @@ func TestGfal2ClientFileListingToFileEntry(t *testing.T) {
 		t.Run(
 			test.description,
 			func(t *testing.T) {
-				entry, _ := g.fileListingToFileEntry(test.line)
+				entry, _ := g.fileListingToFileEntry(test.line, test.transformFunc)
 				assert.Equal(t, test.expectedFileEntry, entry)
 			},
 		)

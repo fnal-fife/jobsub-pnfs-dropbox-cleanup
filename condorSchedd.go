@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	condor "github.com/retzkek/htcondor-go"
@@ -12,7 +13,7 @@ import (
 
 func getCondorSchedds(ctx context.Context, constraint string) ([]*condorSchedd, error) {
 	cmd := condor.NewCommand("/usr/bin/condor_status").WithPool("gpcollector04.fnal.gov").WithConstraint(constraint).WithArg("-schedd")
-	fmt.Println("Running command:", cmd.MakeArgs())
+	slog.Debug("Running command", "command", cmd.MakeArgs())
 	ads, err := cmd.RunWithContext(ctx)
 	if err != nil {
 		// TODO Handle Error
@@ -22,7 +23,7 @@ func getCondorSchedds(ctx context.Context, constraint string) ([]*condorSchedd, 
 	for _, ad := range ads {
 		name, ok := ad["Name"]
 		if !ok {
-			// TODO Handle error
+			slog.Error("Name not found in schedd ad", "ad", ad)
 			continue
 		}
 		schedd := &condorSchedd{
@@ -38,14 +39,17 @@ type condorSchedd struct {
 }
 
 func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string) ([]classad.ClassAd, error) {
+	// TODO Should be configured
 	constraint := "Jobsub_Group==\"" + experiment + "\"" + " && !IsUndefined(PNFS_INPUT_FILES)"
 
 	cmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(constraint)
-	fmt.Println("Running command:", cmd.MakeArgs())
+	slog.Debug("Running command", "command", cmd.MakeArgs())
 	ads, err := cmd.RunWithContext(ctx)
 	if err != nil {
 		// Handle Error
-		return nil, err
+		msg := "error querying condorSchedd for PNFS-using jobs"
+		slog.Error(msg, "error", err)
+		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 	return ads, nil
 }
@@ -56,14 +60,9 @@ func (c *condorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, 
 	attribute := "PNFS_INPUT_FILES"
 	val, ok := stringAd[attribute]
 	if !ok {
-		return nil, ErrMissingJobDropboxFiles
+		return nil, errMissingJobDropboxFiles
 	}
 
-	// b := new(strings.Builder)
-	// _, err := io.Copy(b, val)
-	// if err != nil {
-	// 	return nil, err
-	// }
 	rawSlice := strings.Split(val, ",")
 	finalSlice := make([]string, 0, len(rawSlice))
 
@@ -74,4 +73,4 @@ func (c *condorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, 
 
 }
 
-var ErrMissingJobDropboxFiles = errors.New("required job attribute is missing to get job dropbox files")
+var errMissingJobDropboxFiles = errors.New("required job attribute is missing to get job dropbox files")

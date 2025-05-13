@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"os/exec"
@@ -50,13 +51,13 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 	c := exec.CommandContext(ctx, "gfal-ls", cmdArgs...)
 	c.Env = environ
 
-	fmt.Println("Running command:", c.String())
+	slog.Debug("Running command", "command", c.String())
 	stdoutStderr, err := c.CombinedOutput()
 	// fmt.Println("Command output:", string(stdoutStderr))
 	if err != nil {
-		// Handle error
-		fmt.Println("error running command:", err)
-		return nil, err
+		msg := "error running gfal-ls command"
+		slog.Error(msg, "error", err)
+		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(stdoutStderr))
@@ -67,49 +68,44 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 	sourceURL, err := url.Parse(source)
 	// TODO Make this more robust
 	if err != nil {
-		return nil, err
+		slog.Error("error parsing source URL", "source", source, "error", err)
+		return nil, fmt.Errorf("error parsing source URL: %w", err)
 	}
 
 	for scanner.Scan() {
-		fmt.Println("File count left:", fileCountLeft) // TODO Debug
-		// fmt.Println("Length of dirContents:", len(dirContents))
+		slog.Debug(fmt.Sprintf("File count left: %d", fileCountLeft))
 		if fileCountLeft == 0 {
 			return dirContents, errFileCountLimitExceeded
 		}
 		fileCountLeft--
 		line := scanner.Text()
-		// fmt.Println(line)
 
 		entry, err := g.fileListingToFileEntry(line, func(s string) string {
 			return path.Join("/pnfs", sourceURL.Path, s)
-			// return s // NOOP
 		})
 		if errors.Is(err, errFileCountLimitExceeded) {
 			// We exceeded our file count limit, so we should stop
+			slog.Debug("File count limit exceeded, stopping")
 			return dirContents, err
 		}
 		if err != nil {
 			// Handle error: print that there's an issue
-			fmt.Println("error parsing line:", err)
+			slog.Error("error parsing line", "error", err)
 			errs = append(errs, err)
 			continue
 		}
 		entry.parent = parent
-		// fmt.Printf("Entry name:%s\n", entry.filename)
 
 		if entry.isDirectory {
-			// TODO Make this better later
-			// Strip off leading /pnfs/
 			urlFile := strings.TrimPrefix(entry.filename, "/pnfs")
 			newSource := sourceURL.Scheme + "://" + sourceURL.Host + urlFile
-			// newSource := sourceURL.Scheme + "://" + sourceURL.Host + "" + entry.filename
-			fmt.Println("New source:", newSource)
 
 			// Get files in this directory recursively
 			files, err := g.getFilesTree(ctx, newSource, nil, entry)
 			if err != nil {
 				// Skip this directory
 				// Handle error: print that there's an issue
+				slog.Error("error getting files in directory. Moving to next entry", "directory", entry.filename, "error", err)
 				errs = append(errs, err)
 				continue
 			}
@@ -119,7 +115,9 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 	}
 	if scanner.Err() != nil {
 		// Handle error
-		return nil, scanner.Err()
+		msg := "error scanning output"
+		slog.Error(msg, "error", scanner.Err())
+		return nil, fmt.Errorf("%s: %w", msg, scanner.Err())
 	}
 
 	// If we had any errors, we should tell the caller
@@ -235,20 +233,18 @@ func (g *gfal2Client) removeFile(ctx context.Context, source string, isDir bool)
 	c := exec.CommandContext(ctx, "echo", cmdArgs...)
 	c.Env = environ
 
-	fmt.Println("Running command:", c.String()) // TODO Debug
+	slog.Debug("Running delete command", "command", c.String())
 	err := c.Run()
 	if err != nil {
-		// Handle error
-		fmt.Println("error running command:", err)
+		// TODO Handle error. If we get non-empty directory, we should return a errRmNonEmptyDir
+		slog.Error("error running command", "command", c.String(), "error", err)
 		return err
 	}
-	fmt.Println("Removed file:", source)
+	slog.Debug("Removed file", "filename", source)
 
-	// TODO implement this
 	return nil
 }
 
-// TODO rename this
 var (
 	errParseLine              = errors.New("could not parse line")
 	errMalformedPerms         = errors.New("perms string is malformed")

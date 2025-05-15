@@ -236,7 +236,6 @@ func (g *gfal2Client) removeFile(ctx context.Context, source string, isDir bool)
 	slog.Debug("Running delete command", "command", c.String())
 	err := c.Run()
 	if err != nil {
-		// TODO Handle error. If we get non-empty directory, we should return a errRmNonEmptyDir
 		slog.Error("error running command", "command", c.String(), "error", err)
 		return err
 	}
@@ -249,5 +248,4 @@ var (
 	errParseLine              = errors.New("could not parse line")
 	errMalformedPerms         = errors.New("perms string is malformed")
 	errFileCountLimitExceeded = errors.New("file parse limit exceeded")
-	errRmNonEmptyDir          = errors.New("cannot remove non-empty directory")
 )

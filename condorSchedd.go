@@ -16,7 +16,7 @@ func getCondorSchedds(ctx context.Context, constraint string) ([]*condorSchedd, 
 	slog.Debug("Running command", "command", cmd.MakeArgs())
 	ads, err := cmd.RunWithContext(ctx)
 	if err != nil {
-		// TODO Handle Error
+		slog.Error("error querying condor collector for schedds", "error", err)
 		return nil, err
 	}
 	schedds := make([]*condorSchedd, 0, len(ads))

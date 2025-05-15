@@ -22,40 +22,66 @@ var (
 	experiment       = "gm2"
 	scheddConstraint = "IsJobsubLite == true && InDowntime == false"
 	// schedd           = ***REMOVED***
+	defaultVaultTokenFile      = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
+	defaultVaultTokenAgeCutoff = time.Duration(7 * 24 * time.Hour)
+	defaultBearerTokenFile     = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
 )
 
+// TODO Make this configurable
 var exptNameOverride = map[string]string{
 	"gm2": "GM2",
 }
 
 func main() {
 	ctx := context.Background()
+	// TODO Make this configurable via flag
+	slog.SetLogLoggerLevel(slog.LevelDebug)
 	// Get token
+	// First, make sure we have a vault token that is less than 7 days old. Read from /var/lib/jobsub-pnfs-dropbox-cleanup/vt_token
+	slog.Debug("Ensuring vault token is available, and new enough", "vaultTokenFile", defaultVaultTokenFile, "vaultTokenAgeCutoff", defaultVaultTokenAgeCutoff)
+	stat, err := os.Stat(defaultVaultTokenFile)
+	if err != nil {
+		slog.Error("error getting file information about vault token file. Exiting", "error", err)
+		return
+	}
+
+	// if now.Sub(defaultVaultTokenAgeCutoff).After(stat.ModTime()) { // File is older than 7 days)
+	if stat.ModTime().Add(defaultVaultTokenAgeCutoff).Before(now) { // File is older than 7 days)
+		slog.Error("vault token file is older than the time cutoff. Exiting", "vaultTokenFile", defaultVaultTokenFile, "vaultTokenAgeCutoff", defaultVaultTokenAgeCutoff)
+		return
+	}
+	slog.Debug("Vault token file exists and is new enough", "vaultTokenFile", defaultVaultTokenFile, "vaultTokenAgeCutoff", defaultVaultTokenAgeCutoff)
+
+	// Make the above configurable!
+	//
+	// Pass this vault token to --vaulttokeninfile=path
+	// TODO Make this all configurable.  We should have the ability to run a default htgettoken command, or override it with configuration
 	slog.Debug("Ensuring token is available", "experiment", experiment)
 	cmdArgs := []string{
 		"-a",
 		***REMOVED***,
 		"-i",
 		experiment,
+		"--vaulttokeninfile",
+		defaultVaultTokenFile,
+		"-o",
+		defaultBearerTokenFile,
 	}
 	cmd := exec.CommandContext(ctx, "htgettoken", cmdArgs...)
-	err := cmd.Run()
-	// stdoutStderr, err := cmd.CombinedOutput()
-	// fmt.Println("Command output:", string(stdoutStderr))
+	err = cmd.Run()
 	if err != nil {
-		slog.Error("error running htgettoken", "error", err)
-		// Handle error
+		slog.Error("error running htgettoken to obtain bearer token", "error", err)
 		return
 	}
+	slog.Debug("got bearer token successfully", "bearerTokenFile", defaultBearerTokenFile)
 
 	// Get files
 	addedEnvironment := []string{
-		"BEARER_TOKEN_FILE=/run/user/10610/bt_u10610",
+		"BEARER_TOKEN_FILE=" + defaultBearerTokenFile,
 	}
-	tokenBytes, err := os.ReadFile("/run/user/10610/bt_u10610")
+	tokenBytes, err := os.ReadFile(defaultBearerTokenFile)
 	if err != nil {
 		slog.Error("error reading token file", "error", err)
-		// Handle error
 		return
 	}
 	tokenString := string(tokenBytes)

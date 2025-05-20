@@ -13,7 +13,7 @@ import (
 
 func getCondorSchedds(ctx context.Context, constraint string) ([]*condorSchedd, error) {
 	cmd := condor.NewCommand("/usr/bin/condor_status").WithPool("gpcollector04.fnal.gov").WithConstraint(constraint).WithArg("-schedd")
-	slog.Debug("Running command", "command", cmd.MakeArgs())
+	slog.Debug("Running command", "command", append([]string{cmd.Command}, cmd.MakeArgs()...))
 	ads, err := cmd.RunWithContext(ctx)
 	if err != nil {
 		slog.Error("error querying condor collector for schedds", "error", err)
@@ -40,10 +40,10 @@ type condorSchedd struct {
 
 func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string) ([]classad.ClassAd, error) {
 	// TODO Should be configured
-	constraint := "Jobsub_Group==\"" + experiment + "\"" + " && !IsUndefined(PNFS_INPUT_FILES)"
+	constraint := "Jobsub_Group=='" + experiment + "'" + " && !IsUndefined(PNFS_INPUT_FILES)"
 
 	cmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(constraint)
-	slog.Debug("Running command", "command", cmd.MakeArgs())
+	slog.Debug("Running command", "command", append([]string{cmd.Command}, cmd.MakeArgs()...))
 	ads, err := cmd.RunWithContext(ctx)
 	if err != nil {
 		// Handle Error

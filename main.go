@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,9 +21,14 @@ var (
 	experiment       = "gm2"
 	scheddConstraint = "IsJobsubLite == true && InDowntime == false"
 	// schedd           = "jobsub03.fnal.gov"
-	defaultVaultTokenFile      = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
+	// htgettoken
+	vaultServer            = "htvaultprod.fnal.gov"
+	tokenExperiment        = "fermilab"
+	tokenRole              = "jobsubadmin"
+	defaultVaultTokenFile  = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
+	defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
+	//
 	defaultVaultTokenAgeCutoff = time.Duration(7 * 24 * time.Hour)
-	defaultBearerTokenFile     = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
 )
 
 // TODO Make this configurable
@@ -56,36 +60,49 @@ func main() {
 	//
 	// Pass this vault token to --vaulttokeninfile=path
 	// TODO Make this all configurable.  We should have the ability to run a default htgettoken command, or override it with configuration
-	slog.Debug("Ensuring token is available", "experiment", experiment)
-	cmdArgs := []string{
-		"-a",
-		"htvaultprod.fnal.gov",
-		"-i",
-		experiment,
-		"--vaulttokeninfile",
-		defaultVaultTokenFile,
-		"-o",
-		defaultBearerTokenFile,
-	}
-	cmd := exec.CommandContext(ctx, "htgettoken", cmdArgs...)
-	err = cmd.Run()
-	if err != nil {
-		slog.Error("error running htgettoken to obtain bearer token", "error", err)
-		return
-	}
-	slog.Debug("got bearer token successfully", "bearerTokenFile", defaultBearerTokenFile)
+	slog.Debug("Getting BEARER token to do cleanup")
 
-	// Get files
-	addedEnvironment := []string{
-		"BEARER_TOKEN_FILE=" + defaultBearerTokenFile,
-	}
-	tokenBytes, err := os.ReadFile(defaultBearerTokenFile)
+	h := newHtgettokenClient(
+		vaultServer,
+		defaultVaultTokenFile,
+		defaultBearerTokenFile,
+	)
+
+	tok, err := h.getToken(ctx, tokenExperiment, tokenRole)
 	if err != nil {
-		slog.Error("error reading token file", "error", err)
+		slog.Error("error getting and validating token", "error", err)
 		return
 	}
-	tokenString := string(tokenBytes)
-	addedEnvironment = append(addedEnvironment, "BEARER_TOKEN="+tokenString)
+
+	// cmdArgs := []string{
+	// 	"-a",
+	// 	vaultServer,
+	// 	"-i",
+	// 	tokenExperiment,
+	// 	"-r",
+	// 	tokenRole,
+	// 	"--vaulttokeninfile",
+	// 	defaultVaultTokenFile,
+	// 	"-o",
+	// 	defaultBearerTokenFile,
+	// }
+	// cmd := exec.CommandContext(ctx, "htgettoken", cmdArgs...)
+	// err = cmd.Run()
+	// if err != nil {
+	// 	slog.Error("error running htgettoken to obtain bearer token", "error", err)
+	// 	return
+	// }
+	// slog.Debug("got bearer token successfully", "bearerTokenFile", defaultBearerTokenFile)
+
+	// // Get files
+	addedEnvironment := []string{"BEARER_TOKEN=" + string(tok)}
+	// tokenBytes, err := os.ReadFile(defaultBearerTokenFile)
+	// if err != nil {
+	// 	slog.Error("error reading token file", "error", err)
+	// 	return
+	// }
+	// tokenString := string(tokenBytes)
+	// addedEnvironment = append(addedEnvironment, "BEARER_TOKEN="+tokenString)
 
 	client := &gfal2Client{
 		addedEnvironment: addedEnvironment,
@@ -258,7 +275,7 @@ func main() {
 		// 	fmt.Println("Skipping directory", filename)
 		// 	continue
 		// }
-		slog.Debug("Deleting file:", filename)
+		slog.Debug("Deleting file:", "filename", filename)
 		// Remove the file
 		err := client.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath), false)
 		if err != nil {

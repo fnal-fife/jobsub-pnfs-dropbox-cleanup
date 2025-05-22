@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os/exec"
+	"os/user"
+	"path"
 	"strings"
 
 	condor "github.com/retzkek/htcondor-go"
@@ -34,8 +37,37 @@ func getCondorSchedds(ctx context.Context, constraint string) ([]*condorSchedd, 
 	return schedds, nil
 }
 
+// Function that identifies and sets necessary items for authn/authz to the condor schedd
+type condorAuth func(context.Context, *condorSchedd) error
+
+// TODO fake auth that gets us through testing.
+func fakeCondorAuth(ctx context.Context, c *condorSchedd) error {
+	// TODO This is just for now - we're using sbhat's scitoken to authenticate to the schedd for development.  Remove this later
+	user, err := user.Current()
+	if err != nil {
+		slog.Error("error getting current user", "error", err)
+		return err
+	}
+	tokenFile := path.Join("/", "run", "user", user.Uid, "bt_u"+user.Uid)
+	cmd := exec.CommandContext(ctx, "/usr/bin/httokendecode", tokenFile)
+	if err := cmd.Run(); err != nil {
+		slog.Error("error running httokendecode", "error", err, "command", cmd.String())
+		return err
+	}
+	c.cmdEnv = append(c.cmdEnv, "BEARER_TOKEN_FILE="+tokenFile)
+	return nil
+}
+
+// END TODO
+
 type condorSchedd struct {
-	name string
+	name   string
+	cmdEnv []string // place to store things like BEARER_TOKEN_FILE for condor commands
+}
+
+func (c *condorSchedd) verify(ctx context.Context, cFunc condorAuth) error {
+	// TODO write a condorAuth func that ensures that IDToken exists at ~/.condor/tokens.d
+	return cFunc(ctx, c)
 }
 
 func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string) ([]classad.ClassAd, error) {

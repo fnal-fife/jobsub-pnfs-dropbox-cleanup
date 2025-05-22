@@ -183,6 +183,12 @@ func main() {
 	}
 
 	for _, sch := range schedds {
+		err := sch.verify(ctx, fakeCondorAuth)
+		if err != nil {
+			// TODO Handle error
+			slog.Error("error verifying authorization to condor schedd:", "error", err, "schedd", sch.name)
+			continue
+		}
 		ads, err := sch.getPNFSJobsForExperiment(ctx, experiment)
 		if err != nil {
 			// Handle error

@@ -29,6 +29,8 @@ var (
 	defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
 	//
 	defaultVaultTokenAgeCutoff = time.Duration(7 * 24 * time.Hour)
+	// TODO Should be fed by command line or config file
+	debug = true
 )
 
 // TODO Make this configurable
@@ -182,8 +184,17 @@ func main() {
 		return
 	}
 
+	if debug {
+		scheddNames := make([]string, 0, len(schedds))
+		for _, sch := range schedds {
+			scheddNames = append(scheddNames, sch.name)
+		}
+		slog.Debug("Got condor schedds", "schedds", scheddNames)
+	}
+
 	for _, sch := range schedds {
-		err := sch.verify(ctx, fakeCondorAuth)
+		// err := sch.verify(ctx, fakeCondorAuth)
+		err := sch.verify(ctx, idTokenAuth)
 		if err != nil {
 			// TODO Handle error
 			slog.Error("error verifying authorization to condor schedd:", "error", err, "schedd", sch.name)
@@ -209,6 +220,9 @@ func main() {
 	}
 
 	slog.Debug("", "jobFiles", jobFiles) // TODO
+
+	// TODO DEBUG
+	return
 
 	// Remove any files from our delete list that are in the list of job files or are recent
 	// We are iterating a second time to check if the files are recent, which may not be totally efficient, but it should improve readability

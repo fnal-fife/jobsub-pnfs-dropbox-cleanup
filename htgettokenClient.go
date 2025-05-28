@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/lestrrat-go/jwx/jwt"
@@ -19,10 +20,12 @@ type htgettokenClient struct {
 	options          []string
 }
 
+// newHtgettokenClient creates a new htgettokenClient instance. It will check that vaultTokenInFile exists and is readable.
+// outFile and options are optional - if not provided, they will be set to default values. If
+// options are provided, they will be passed to the HTGETTOKENOPTS environment variable.
 func newHtgettokenClient(vaultServer, vaultTokenInFile, outFile string, options ...string) *htgettokenClient {
-	// TODO Check to see if vaultTokenInFile is a valid file
 	if vaultTokenInFile != "" {
-		_, err := os.Stat(defaultVaultTokenFile)
+		_, err := os.Stat(vaultTokenInFile)
 		if err != nil {
 			if os.IsNotExist(err) {
 				slog.Error("vault token file does not exist", "file", vaultTokenInFile)
@@ -105,7 +108,7 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 	return tok, nil
 }
 
-func prepareHtgettokenopts(options []string) string {
+func prepareHtgettokenopts(options []string) []string {
 	finalOpts := make([]string, 0)
 
 	// Preprocess args to remove extra spaces and correct malformed strings, like
@@ -146,5 +149,7 @@ func prepareHtgettokenopts(options []string) string {
 			finalOpts = append(finalOpts, finalOpt)
 		}
 	}
+	return finalOpts
+}
 	return strings.Join(finalOpts, " ")
 }

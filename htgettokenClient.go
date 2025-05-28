@@ -13,6 +13,17 @@ import (
 	scitokens "github.com/scitokens/scitokens-go"
 )
 
+var htgettokenExecutable string
+
+func init() {
+	var err error
+	if htgettokenExecutable, err = exec.LookPath("htgettoken"); err != nil {
+		msg := "htgettoken executable not found in PATH"
+		slog.Error(msg, "error", err)
+		panic(msg)
+	}
+}
+
 type htgettokenClient struct {
 	vaultServer      string
 	vaultTokenInFile string
@@ -45,9 +56,12 @@ func newHtgettokenClient(vaultServer, vaultTokenInFile, outFile string, options 
 	}
 }
 
-// TODO Implement this properly with a real htgettoken call
+// getToken runs htgettoken to obtain a SciToken from the token issuer
 func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([]byte, error) {
-	opts := prepareHtgettokenopts(h.options)
+	opts := strings.Join(
+		mergeHtgettokenopts(os.Environ(), prepareHtgettokenopts(h.options)),
+		" ",
+	)
 	envString := "HTGETTOKENOPTS=" + opts
 
 	cmdArgs := []string{
@@ -62,7 +76,7 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 		"-o",
 		h.outFile,
 	}
-	cmd := exec.CommandContext(ctx, "htgettoken", cmdArgs...)
+	cmd := exec.CommandContext(ctx, htgettokenExecutable, cmdArgs...)
 	cmd.Env = append(cmd.Env, envString)
 	err := cmd.Run()
 	if err != nil {
@@ -151,5 +165,52 @@ func prepareHtgettokenopts(options []string) []string {
 	}
 	return finalOpts
 }
-	return strings.Join(finalOpts, " ")
+
+func mergeHtgettokenopts(env []string, options []string) []string {
+	dropEmptyStringFromSlice := func(s []string) []string {
+		return slices.DeleteFunc(s, func(s2 string) bool { return s2 == "" })
+	}
+
+	// If HTGETTOKENOPTS is set in the environment, we need to merge it with options so that options take precedence
+	if !slices.ContainsFunc(env, func(s string) bool {
+		return strings.HasPrefix(s, "HTGETTOKENOPTS=")
+	}) {
+		// No previous HTGETTOKENOPTS, so we can just return the options
+		return options
+	}
+	// Note: The above check does mean an extra iteration if HTGETTOKENOPTS is set in the environment, but benchmarking showed
+	// a negligible difference in performance whether we do this check or not;  so it was kept in for readability and clarity.
+
+	retOpts := dropEmptyStringFromSlice(prepareHtgettokenopts(options)) // Start with options, since those take precedence
+	optsMap := make(map[string]struct{})                                // For faster lookup
+	for _, opt := range retOpts {
+		optKey := strings.SplitN(opt, "=", 2)[0] // Get the option key, e.g. "--option" or "-o"
+		optsMap[optKey] = struct{}{}
+	}
+
+	for _, envOpt := range env {
+		if !strings.HasPrefix(envOpt, "HTGETTOKENOPTS=") {
+			continue
+		}
+
+		// HTGETTOKENOPTS=\"--option1=value1 --option2=value2 --option3 --option4 value4\"
+		optVals := strings.TrimPrefix(envOpt, "HTGETTOKENOPTS=") // \"--option1=value1 --option2=value2 --option3 --option4 value4"\
+		_htEnvOpts := strings.Split(optVals, " ")                // []string{"\"--option1=value1", "--option2=value2", "--option3", "--option4", "value4\""}
+		htEnvOpts := make([]string, 0)
+		for _, opt := range _htEnvOpts {
+			_opt := strings.Trim(opt, "\"") // Remove any surrounding escaped quotes
+			if _opt != "" {
+				htEnvOpts = append(htEnvOpts, _opt) // Add only non-empty options
+			}
+		} // []string{"--option1=value1", "--option2=value2", "--option3", "--option4", "value4"}
+
+		processedhtEnvOpts := dropEmptyStringFromSlice(prepareHtgettokenopts(htEnvOpts)) // []string{"--option1=value1", "--option2=value2", "--option3", "--option4=value4"}
+		for _, prOpt := range processedhtEnvOpts {
+			htOptKey := strings.SplitN(prOpt, "=", 2)[0] // Get the option key, e.g. "--option" or "-o" to look up
+			if _, ok := optsMap[htOptKey]; !ok {
+				retOpts = append(retOpts, prOpt)
+			}
+		}
+	}
+	return retOpts
 }

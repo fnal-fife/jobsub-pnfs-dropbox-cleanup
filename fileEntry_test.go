@@ -7,9 +7,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TODO add tests for fileIsRecent with different ageCutoff values
 func TestFileIsRecent(t *testing.T) {
 	type testCase struct {
 		description string
+		ageCutoff   time.Duration // This is not used in the test, but should be part of the test case
 		f           *FileEntry
 		isRecent    bool
 	}
@@ -22,6 +24,7 @@ func TestFileIsRecent(t *testing.T) {
 	testCases := []testCase{
 		{
 			"Recent file",
+			0,
 			&FileEntry{
 				"/path/to/recent_file.txt",
 				recentDate,
@@ -33,6 +36,7 @@ func TestFileIsRecent(t *testing.T) {
 		},
 		{
 			"old file",
+			0,
 			&FileEntry{
 				"/path/to/old_file.txt",
 				oldDate,
@@ -44,6 +48,31 @@ func TestFileIsRecent(t *testing.T) {
 		},
 		{
 			"reallyOld file",
+			0,
+			&FileEntry{
+				"/path/to/reallyOld_file.txt",
+				reallyOldDate,
+				false,
+				nil,
+				nil,
+			},
+			false,
+		},
+		{
+			"file with different ageCutoff",
+			time.Duration(3 * 24 * 365 * time.Hour), // 3 years
+			&FileEntry{
+				"/path/to/reallyOld_file.txt",
+				reallyOldDate,
+				false,
+				nil,
+				nil,
+			},
+			true, // Our file IS really old, but the age cutoff is 3 years.
+		},
+		{
+			"file with negative ageCutoff - should use default",
+			-1,
 			&FileEntry{
 				"/path/to/reallyOld_file.txt",
 				reallyOldDate,
@@ -59,7 +88,7 @@ func TestFileIsRecent(t *testing.T) {
 		t.Run(
 			test.description,
 			func(t *testing.T) {
-				assert.Equal(t, test.isRecent, fileIsRecent(test.f))
+				assert.Equal(t, test.isRecent, fileIsRecent(test.f, test.ageCutoff)) // TODO This should come from test case
 			},
 		)
 	}

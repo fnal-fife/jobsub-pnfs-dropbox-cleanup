@@ -18,17 +18,25 @@ var now = time.Now()
 
 // Vars we will eventually configure in a config file
 var (
-	experiment       = "gm2"
-	scheddConstraint = "IsJobsubLite == true && InDowntime == false"
+	experiment              = "mu2e"
+	dropboxLocationOverride = "mu2e/scratch/users/sbhat/fake_resilient/jobsub_stage/"
+	scheddConstraint        = "IsJobsubLite == true && InDowntime == false"
 	// schedd           = ***REMOVED***
 	// htgettoken
-	vaultServer            = ***REMOVED***
-	tokenExperiment        = "fermilab"
-	tokenRole              = "jobsubadmin"
-	defaultVaultTokenFile  = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
-	defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
+	vaultServer = ***REMOVED***
+	// tokenExperiment        = "fermilab"
+	tokenExperiment = "mu2e"
+	tokenRole       = ""
+	// tokenRole             = "jobsubadmin"
+	defaultVaultTokenFile = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token-test"
+	// defaultVaultTokenFile  = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
+	defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup-test"
+	// defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
 	//
-	defaultVaultTokenAgeCutoff = time.Duration(7 * 24 * time.Hour)
+	defaultVaultTokenAgeCutoff      = time.Duration(7 * 24 * time.Hour)
+	totalFileCountLimit        uint = 50
+	// configuredFileAgeCutoff         = time.Duration(30 * 24 * time.Hour) // TODO Configure this
+	configuredFileAgeCutoff = time.Duration(1 * time.Second) // TODO Configure this
 	// TODO Should be fed by command line or config file
 	debug = true
 )
@@ -106,18 +114,21 @@ func main() {
 	// tokenString := string(tokenBytes)
 	// addedEnvironment = append(addedEnvironment, "BEARER_TOKEN="+tokenString)
 
-	client := &gfal2Client{
+	gClient := &gfal2Client{
 		addedEnvironment: addedEnvironment,
 	}
+	dClient := newDCacheClient(string(tok), true)
+	// TODO Put this back
+	// exptArea := experiment
+	// if override, ok := exptNameOverride[experiment]; ok {
+	// 	exptArea = override
+	// }
 
-	exptArea := experiment
-	if override, ok := exptNameOverride[experiment]; ok {
-		exptArea = override
-	}
-
-	source := ***REMOVED***
+	// TODO Put this back
+	// source := ***REMOVED***
+	source := ***REMOVED*** + dropboxLocationOverride // TODO This is for testing
 	slog.Debug("Getting files list", "source", source)
-	filesTree, err := client.getFilesTree(ctx, source, nil, nil)
+	filesTree, err := gClient.getFilesTree(ctx, source, nil, nil)
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):
 		slog.Error("file count limit exceeded. Stopping collecting files now")
@@ -221,9 +232,6 @@ func main() {
 
 	slog.Debug("", "jobFiles", jobFiles) // TODO
 
-	// TODO DEBUG
-	return
-
 	// Remove any files from our delete list that are in the list of job files or are recent
 	// We are iterating a second time to check if the files are recent, which may not be totally efficient, but it should improve readability
 	// Maybe if we have performance problems, we first get the list of job files, then pass in a filter function to our tree-builder that could check
@@ -245,7 +253,7 @@ func main() {
 				removeFileAndAncestorsFromDeleteList()
 				return
 			}
-			if fileIsRecent(file) {
+			if fileIsRecent(file, configuredFileAgeCutoff) {
 				slog.Debug("File is recent, so we will not delete it:", "filename", file.Name())
 				removeFileAndAncestorsFromDeleteList()
 			}
@@ -297,7 +305,7 @@ func main() {
 		// }
 		slog.Debug("Deleting file:", "filename", filename)
 		// Remove the file
-		err := client.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath), false)
+		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath))
 		if err != nil {
 			// TODO Handle error
 			slog.Error("error deleting file", "error", err)
@@ -331,7 +339,7 @@ func main() {
 
 		slog.Debug("Deleting directory", "dirName", filename)
 		// Remove the file
-		err := client.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath), true)
+		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath))
 		if err != nil {
 			// TODO Handle error
 			slog.Error("error deleting directory", "error", err)
@@ -358,7 +366,7 @@ func main() {
 			}
 			// Delete parent directory, since we've established that it's empty
 			slog.Debug("Parent is empty, so we will delete it", "dirName", _parent.Name())
-			err := client.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath), true)
+			err := dClient.removeFile(ctx, PNFSToHTTPS(filename, stripPNFSFromPath))
 			if err != nil {
 				// TODO Handle error
 				slog.Error("error deleting directory", "error", err)

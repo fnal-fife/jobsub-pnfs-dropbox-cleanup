@@ -17,6 +17,8 @@ import (
 	"time"
 )
 
+// TODO NOTE: This will be deprecated when the dCache client is fully implemented
+
 var lineRegex = regexp.MustCompile(`((?:\w|-)+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\w+\s+\d+\s+(?:(?:\d+:\d+)|\d+))\s+(.+)`)
 
 var (
@@ -31,8 +33,8 @@ type gfal2Client struct {
 
 // TODO Move this inside getFilesTree
 var (
-	totalFileCountLimit uint = 50
-	fileCountLeft       uint = totalFileCountLimit
+	fileCountLeft     uint = totalFileCountLimit
+	defaultRetryCount uint = 5 // TODO Make this configurable
 )
 
 // TODO: Can this be implemented using a fs.WalkDirFunc?

@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	recentDuration time.Duration = time.Duration(30 * time.Hour * 24)
+	defaultRecentDuration time.Duration = time.Duration(30 * time.Hour * 24)
 )
 
 // FileEntry is a directory file listing. It implements the fs.DirEntry interface
@@ -19,8 +19,12 @@ type FileEntry struct {
 	parent        *FileEntry
 }
 
-func fileIsRecent(f *FileEntry) bool {
-	return now.Sub(f.created) < recentDuration
+// fileIsRecent checks if the file is recent based on the provided ageCutoff. To use the default recent duration, pass a zero or negative value for ageCutoff.
+func fileIsRecent(f *FileEntry, ageCutoff time.Duration) bool {
+	if ageCutoff <= 0 {
+		ageCutoff = defaultRecentDuration
+	}
+	return now.Sub(f.created) < ageCutoff
 }
 
 func (f *FileEntry) Name() string {

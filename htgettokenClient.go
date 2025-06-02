@@ -69,13 +69,16 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 		h.vaultServer,
 		"-i",
 		issuer,
-		"-r",
-		role,
 		"--vaulttokeninfile",
 		h.vaultTokenInFile,
 		"-o",
 		h.outFile,
 	}
+
+	if role != "" {
+		cmdArgs = append(cmdArgs, "--role", role)
+	}
+
 	cmd := exec.CommandContext(ctx, htgettokenExecutable, cmdArgs...)
 	cmd.Env = append(cmd.Env, envString)
 	err := cmd.Run()

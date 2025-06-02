@@ -140,6 +140,11 @@ func main() {
 		// TODO - do we need the default case?
 	}
 
+	if len(filesTree) == 0 {
+		slog.Info("No files found in dropbox. Exiting")
+		return
+	}
+
 	// TODO combine this line into fileMap creating line like for _, file := range flattenEntryTree(files) {....
 	flattenedFileEntries := flattenEntryTree(filesTree) // TODO If performance suffers, throw out files after this executes. We shouldn't need files anymore after this
 
@@ -221,9 +226,11 @@ func main() {
 			scheddFiles, err := sch.getDropboxFilesFromJob(ad)
 			if err != nil {
 				// Handle error
-				slog.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name) // TODO Get job ID?
+				slog.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name)  // TODO Get job ID?
+				fmt.Println("error getting dropbox files from job:", "error", err, "schedd", sch.name) // TODO Get job ID?
 				continue
 			}
+			slog.Debug("Got schedd dropbox files", "schedd", sch.name, "files", scheddFiles)
 			for _, file := range scheddFiles {
 				jobFiles[file] = struct{}{}
 			}
@@ -258,6 +265,11 @@ func main() {
 				removeFileAndAncestorsFromDeleteList()
 			}
 		}(entry)
+	}
+
+	if len(fileMap) == 0 {
+		slog.Info("No files to delete. Exiting")
+		return
 	}
 
 	// TODO DEBUG
@@ -326,6 +338,11 @@ func main() {
 
 	for _, filename := range deletedFilenames {
 		delete(fileMap, filename)
+	}
+
+	if len(fileMap) == 0 {
+		slog.Info("No files left to delete. Exiting")
+		return
 	}
 
 	slog.Info("Deleting empty directories")

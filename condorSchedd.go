@@ -172,7 +172,7 @@ func (c *condorSchedd) verify(ctx context.Context, cFunc condorAuth) error {
 
 func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string) ([]classad.ClassAd, error) {
 	// TODO Should be configured
-	constraint := "Jobsub_Group=='" + experiment + "'" + " && !IsUndefined(PNFS_INPUT_FILES)"
+	constraint := "Jobsub_Group==\"" + experiment + "\"" + " && !IsUndefined(PNFS_INPUT_FILES)"
 
 	cmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(constraint)
 	slog.Debug("Running command", "command", append([]string{cmd.Command}, cmd.MakeArgs()...))

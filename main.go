@@ -208,8 +208,30 @@ func main() {
 		slog.Debug("Got condor schedds", "schedds", scheddNames)
 	}
 
+	// Set environment so we can use IDTOKENS for authentication
+	var oldSECClientAuthenticationMethods string
+	val, ok := os.LookupEnv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
+	if ok {
+		oldSECClientAuthenticationMethods = val
+	}
+
+	err = os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "IDTOKENS")
+	if err != nil {
+		slog.Error("error setting environment variable for condor authentication methods", "error", err)
+		return
+	}
+	defer func() {
+		if oldSECClientAuthenticationMethods != "" {
+			os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", oldSECClientAuthenticationMethods)
+			slog.Debug("Restored old _condor_SEC_CLIENT_AUTHENTICATION_METHODS env var", "methods", oldSECClientAuthenticationMethods)
+			return
+		}
+		os.Unsetenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
+		slog.Debug("Unset _condor_SEC_CLIENT_AUTHENTICATION_METHODS environment variable")
+	}()
 	for _, sch := range schedds {
 		// err := sch.verify(ctx, fakeCondorAuth)
+		sch.cmdEnv = os.Environ()
 		err := sch.verify(ctx, idTokenAuth)
 		if err != nil {
 			// TODO Handle error
@@ -226,8 +248,7 @@ func main() {
 			scheddFiles, err := sch.getDropboxFilesFromJob(ad)
 			if err != nil {
 				// Handle error
-				slog.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name)  // TODO Get job ID?
-				fmt.Println("error getting dropbox files from job:", "error", err, "schedd", sch.name) // TODO Get job ID?
+				slog.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name) // TODO Get job ID?
 				continue
 			}
 			slog.Debug("Got schedd dropbox files", "schedd", sch.name, "files", scheddFiles)

@@ -229,6 +229,10 @@ func main() {
 		os.Unsetenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
 		slog.Debug("Unset _condor_SEC_CLIENT_AUTHENTICATION_METHODS environment variable")
 	}()
+
+	// queriedScheddSuccessfully will be true if we successfully queried at least one schedd. If it remains false, we will not delete
+	// any files
+	queriedScheddSuccessfully := false
 	for _, sch := range schedds {
 		// err := sch.verify(ctx, fakeCondorAuth)
 		sch.cmdEnv = os.Environ()
@@ -244,6 +248,7 @@ func main() {
 			slog.Error("error getting PNFS jobs:", "error", err, "schedd", sch.name)
 			continue
 		}
+		queriedScheddSuccessfully = true
 		for _, ad := range ads {
 			scheddFiles, err := sch.getDropboxFilesFromJob(ad)
 			if err != nil {
@@ -256,6 +261,10 @@ func main() {
 				jobFiles[file] = struct{}{}
 			}
 		}
+	}
+	if !queriedScheddSuccessfully {
+		slog.Error("No condor schedds were queried successfully. Exiting")
+		return
 	}
 
 	slog.Debug("", "jobFiles", jobFiles) // TODO

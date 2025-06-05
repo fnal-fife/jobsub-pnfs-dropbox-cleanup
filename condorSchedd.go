@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -149,7 +150,7 @@ func checkForClientAuthMethod(ctx context.Context, m condorAuthMethod) bool {
 	methods := strings.Split(string(stdoutStderr), ",")
 	for _, ad := range methods {
 		if strings.TrimSpace(ad) == m.String() {
-			slog.Debug("IDTOKENS found in supported auth methods")
+			slog.Debug("Requested method found in supported auth methods", "method", m.String())
 			return true
 		}
 	}
@@ -174,15 +175,24 @@ func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment 
 	// TODO Should be configured
 	constraint := "Jobsub_Group==\"" + experiment + "\"" + " && !IsUndefined(PNFS_INPUT_FILES)"
 
-	cmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(constraint)
-	slog.Debug("Running command", "command", append([]string{cmd.Command}, cmd.MakeArgs()...))
-	ads, err := cmd.RunWithContext(ctx)
+	condorCmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(constraint)
+	slog.Debug("Running command", "command", append([]string{condorCmd.Command}, condorCmd.MakeArgs()...))
+	// ads, err := cmd.RunWithContext(ctx)
+	cmd := condorCmd.CmdContext(ctx)
+	cmd.Env = append(os.Environ(), c.cmdEnv...) // TODO Make this configurable
+	out, err := cmd.Output()
 	if err != nil {
 		// Handle Error
 		msg := "error querying condorSchedd for PNFS-using jobs"
 		slog.Error(msg, "error", err)
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
+	ads, err := classad.ReadClassAds(bytes.NewReader(out))
+	if err != nil {
+		slog.Error("error reading classads from condor_q output", "error", err)
+		return nil, fmt.Errorf("error reading classads: %w", err)
+	}
+
 	return ads, nil
 }
 

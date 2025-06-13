@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/knadh/koanf/parsers/yaml"
@@ -198,11 +197,12 @@ func main() {
 	// tokenString := string(tokenBytes)
 	// addedEnvironment = append(addedEnvironment, "BEARER_TOKEN="+tokenString)
 
-	gClient := &gfal2Client{
-		addedEnvironment: addedEnvironment,
-		fileCountLeft:    atomic.Int32{},
-	}
-	gClient.fileCountLeft.Store(int32(k.Int("totalFileCountLimit")))
+	// gClient := &gfal2Client{
+	// 	addedEnvironment: addedEnvironment,
+	// 	fileCountLeft:    atomic.Int32{},
+	// }
+	gClient := newGfal2Client(k.Int("totalFileCountLimit"), uint(k.Int("retryCount")), addedEnvironment)
+	// gClient.fileCountLeft.Store(int32(k.Int("totalFileCountLimit")))
 
 	dClient := newDCacheClient(string(tok), true)
 

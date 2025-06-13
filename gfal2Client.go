@@ -23,6 +23,11 @@ import (
 var lineRegex = regexp.MustCompile(`((?:\w|-)+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\w+\s+\d+\s+(?:(?:\d+:\d+)|\d+))\s+(.+)`)
 
 var (
+	defaultRetryCount    uint  = 5    // TODO implement retries
+	defaultFileCountLeft int32 = 1000 // Default file count limit
+)
+
+var (
 	dateWithTimeNoYearLayout string = "Jan  2 15:04"
 	dateWithYearLayout       string = "Jan 2 2006"
 )
@@ -31,13 +36,26 @@ var (
 type gfal2Client struct {
 	addedEnvironment []string
 	fileCountLeft    atomic.Int32
+	retryCount       uint
 }
 
-// TODO Move this inside getFilesTree
-var (
-	// fileCountLeft     uint
-	defaultRetryCount uint = 5 // TODO Make this configurable
-)
+func newGfal2Client(fileCountLimit int, retryCount uint, environment []string) *gfal2Client {
+	c := &gfal2Client{
+		addedEnvironment: environment,
+		retryCount:       defaultRetryCount,
+	}
+
+	if retryCount > 0 {
+		c.retryCount = retryCount
+	}
+
+	if fileCountLimit <= 0 {
+		c.fileCountLeft.Store(defaultFileCountLeft)
+		return c
+	}
+	c.fileCountLeft.Store(int32(fileCountLimit))
+	return c
+}
 
 // TODO: Can this be implemented using a fs.WalkDirFunc?
 // Recursive

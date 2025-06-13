@@ -46,6 +46,7 @@ const (
 	FS condorAuthMethod = iota
 	IDTOKENS
 	SCITOKENS
+	UNSUPPORTED
 )
 
 func (a condorAuthMethod) String() string {
@@ -58,6 +59,78 @@ func (a condorAuthMethod) String() string {
 		return "SCITOKENS"
 	default:
 		return "UNKNOWN"
+	}
+}
+
+func newCondorAuthMethod(s string) condorAuthMethod {
+	switch strings.ToUpper(s) {
+	case FS.String():
+		return FS
+	case IDTOKENS.String():
+		return IDTOKENS
+	case SCITOKENS.String():
+		return SCITOKENS
+	default:
+		slog.Error("Unsupported condor authentication method", "method", s)
+		return UNSUPPORTED
+	}
+}
+
+func (a condorAuthMethod) verify(ctx context.Context, c *condorSchedd) error {
+	switch a {
+	case FS:
+		return nil // No-op for FS, since it doesn't require any special handling
+	case IDTOKENS:
+		return idTokenAuth(ctx, c)
+	case SCITOKENS:
+		return sciTokenAuth(ctx, c)
+	default:
+		msg := fmt.Sprintf("Unsupported condor authentication method: %s", a.String())
+		slog.Error(msg)
+		return errors.New(msg)
+	}
+}
+
+// setupEnv sets up the environment for the specified condor authentication method.
+// It returns a cleanup function that restores the old environment after execution.
+func (a condorAuthMethod) setupEnv() (cleanupFunc func()) {
+	switch a {
+	case FS:
+		return func() {} // No-op for FS, since it doesn't require any special handling
+	case IDTOKENS:
+		return setupIDTOKENEnvironment()
+	case SCITOKENS:
+		return func() {
+			// No specific environment setup needed for SCITOKENS
+		}
+	default:
+		slog.Error("Unsupported condor authentication method", "method", a.String())
+		return func() {}
+	}
+}
+
+// Set environment so we can use IDTOKENS for authentication.  Returns a function to restore the old environment after execution
+func setupIDTOKENEnvironment() (cleanupFunc func()) {
+	var oldSECClientAuthenticationMethods string
+	val, ok := os.LookupEnv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
+	if ok {
+		oldSECClientAuthenticationMethods = val
+	}
+
+	err := os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "IDTOKENS")
+	if err != nil {
+		slog.Error("error setting environment variable for condor authentication methods", "error", err)
+		return func() {}
+	}
+
+	return func() {
+		if oldSECClientAuthenticationMethods != "" {
+			os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", oldSECClientAuthenticationMethods)
+			slog.Debug("Restored old _condor_SEC_CLIENT_AUTHENTICATION_METHODS env var", "methods", oldSECClientAuthenticationMethods)
+			return
+		}
+		os.Unsetenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
+		slog.Debug("Unset _condor_SEC_CLIENT_AUTHENTICATION_METHODS environment variable")
 	}
 }
 
@@ -167,15 +240,15 @@ type condorSchedd struct {
 	authMethod []condorAuthMethod
 }
 
-func (c *condorSchedd) verify(ctx context.Context, cFunc condorAuth) error {
-	return cFunc(ctx, c)
+func (c *condorSchedd) verify(ctx context.Context, a condorAuthMethod) error {
+	return a.verify(ctx, c)
 }
 
-func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string) ([]classad.ClassAd, error) {
-	// TODO Should be configured
-	constraint := "Jobsub_Group==\"" + experiment + "\"" + " && !IsUndefined(PNFS_INPUT_FILES)"
+func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string, constraint string) ([]classad.ClassAd, error) {
+	useConstraint := buildConstraint(experiment, constraint)
+	slog.Debug("Final job constraint", "constraint", useConstraint)
 
-	condorCmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(constraint)
+	condorCmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(useConstraint)
 	slog.Debug("Running command", "command", append([]string{condorCmd.Command}, condorCmd.MakeArgs()...))
 	// ads, err := cmd.RunWithContext(ctx)
 	cmd := condorCmd.CmdContext(ctx)
@@ -213,6 +286,14 @@ func (c *condorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, 
 	}
 	return finalSlice, nil
 
+}
+
+func buildConstraint(experiment string, constraint string) string {
+	exptConstraint := "Jobsub_Group==\"" + experiment + "\""
+	if constraint == "" {
+		return exptConstraint
+	}
+	return exptConstraint + " && (" + constraint + ")"
 }
 
 var (

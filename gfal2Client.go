@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,11 +30,12 @@ var (
 // This should probably have an authenticator (token or proxy?)
 type gfal2Client struct {
 	addedEnvironment []string
+	fileCountLeft    atomic.Int32
 }
 
 // TODO Move this inside getFilesTree
 var (
-	fileCountLeft     uint = totalFileCountLimit
+	// fileCountLeft     uint
 	defaultRetryCount uint = 5 // TODO Make this configurable
 )
 
@@ -75,11 +77,11 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 	}
 
 	for scanner.Scan() {
-		slog.Debug(fmt.Sprintf("File count left: %d", fileCountLeft))
-		if fileCountLeft == 0 {
+		slog.Debug("File count left", "remaining", g.fileCountLeft.Load())
+		if g.fileCountLeft.Load() == 0 {
 			return dirContents, errFileCountLimitExceeded
 		}
-		fileCountLeft--
+		g.fileCountLeft.Add(-1)
 		line := scanner.Text()
 
 		entry, err := g.fileListingToFileEntry(line, func(s string) string {

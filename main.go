@@ -6,65 +6,142 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
+
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/providers/posflag"
+	"github.com/knadh/koanf/v2"
+	flag "github.com/spf13/pflag"
 )
 
 var now = time.Now()
 
 // Vars we will eventually configure in a config file
+// TODO Defaults should go here
 var (
-	experiment              = "mu2e"
-	dropboxLocationOverride = "mu2e/scratch/users/sbhat/fake_resilient/jobsub_stage/"
-	scheddConstraint        = "IsJobsubLite == true && InDowntime == false"
+	defaultVaultTokenTimeLeft = time.Duration(3 * 24 * time.Hour) // 3 days
+	defaultCondorAuthMethod   = "IDTOKENS"                        // Default condor authentication method
+	// experiment = "mu2e"
+	// dropboxLocationOverride = "mu2e/scratch/users/sbhat/fake_resilient/jobsub_stage/"
+	// scheddConstraint = "IsJobsubLite == true && InDowntime == false"
 	// schedd           = ***REMOVED***
 	// htgettoken
-	vaultServer = ***REMOVED***
+	// vaultServer = ***REMOVED***
 	// tokenExperiment        = "fermilab"
-	tokenExperiment = "mu2e"
-	tokenRole       = ""
+	// tokenExperiment = "mu2e"
+	// tokenRole       = ""
 	// tokenRole             = "jobsubadmin"
-	defaultVaultTokenFile = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token-test"
-	// defaultVaultTokenFile  = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
-	defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup-test"
+	// defaultVaultTokenFile = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token-test"
+	// // defaultVaultTokenFile  = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
+	// defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup-test"
 	// defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
 	//
-	defaultVaultTokenAgeCutoff      = time.Duration(7 * 24 * time.Hour)
-	totalFileCountLimit        uint = 50
+	// defaultVaultTokenAgeCutoff      = time.Duration(7 * 24 * time.Hour)
+	// totalFileCountLimit uint = 50
 	// configuredFileAgeCutoff         = time.Duration(30 * 24 * time.Hour) // TODO Configure this
-	configuredFileAgeCutoff = time.Duration(1 * time.Second) // TODO Configure this
-	// TODO Should be fed by command line or config file
-	debug = true
+	// configuredFileAgeCutoff = time.Duration(1 * time.Second) // TODO Configure this
 )
 
 // TODO Make this configurable
-var exptNameOverride = map[string]string{
-	"gm2": "GM2",
+// var exptNameOverride = map[string]string{
+// 	"gm2": "GM2",
+// 	// TODO This is just for testing
+// 	"mu2e": "mu2e/scratch/users/sbhat/fake_resilient/jobsub_stage/",
+// }
+
+// Config holders
+var (
+	k = koanf.New(".") // Config path delimiter is "."
+	f = flag.NewFlagSet("jobsub-pnfs-dropbox-cleanup", flag.ContinueOnError)
+)
+
+func init() {
+	initConfigAndFlags()
+	initLogs()
+}
+
+func initConfigAndFlags() {
+	// Read flags and merge in
+	f.Usage = func() {
+		fmt.Println("Usage: jobsub-pnfs-dropbox-cleanup [options]")
+		fmt.Println("Options:")
+		f.PrintDefaults()
+		os.Exit(0)
+	}
+	f.StringP("experiment", "e", "", "Experiment name to use for dropbox cleanup")
+	f.BoolP("debug", "d", false, "Enable debug logging")
+
+	f.Parse(os.Args[1:])
+
+	// Load Config
+	if err := k.Load(file.Provider("jobsub-pnfs-dropbox-cleanup.yml"), yaml.Parser()); err != nil {
+		panic(fmt.Sprintf("error loading config file: %v", err))
+	}
+
+	// Add flags to override config file values
+	if err := k.Load(posflag.Provider(f, ".", k), nil); err != nil {
+		panic(fmt.Sprintf("error loading config: %v", err))
+	}
+
+}
+
+func initLogs() {
+	// TODO Set up log handlers so that we have an info log, a debug log, and stdout/stderr gets debug logs
+	// Set up logging
+	if k == nil {
+		slog.Warn("koanf instance is nil, using default logging level", "level", "INFO")
+		return
+	}
+
+	if k.Bool("debug") {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+		slog.Debug("Debug logging enabled")
+	}
+	// slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+	// 	Level: logLevel,
+	// })))
+	slog.Info("Initialized logging")
 }
 
 func main() {
+	s, err := f.GetString("experiment")
+	if err != nil || s == "" {
+		slog.Error("Experiment flag is required")
+		f.Usage()
+		os.Exit(1)
+	}
+
 	ctx := context.Background()
-	// TODO Make this configurable via flag
-	slog.SetLogLoggerLevel(slog.LevelDebug)
+
 	// Get token
+	vaultTokenAgeCutoff, err := time.ParseDuration(k.String("vault.vaultTokenAgeCutoff"))
+	if err != nil {
+		slog.Error("error parsing vault token age cutoff duration", "error", err)
+		return
+	}
+
 	// First, make sure we have a vault token that is less than 7 days old. Read from /var/lib/jobsub-pnfs-dropbox-cleanup/vt_token
-	slog.Debug("Ensuring vault token is available, and new enough", "vaultTokenFile", defaultVaultTokenFile, "vaultTokenAgeCutoff", defaultVaultTokenAgeCutoff)
-	stat, err := os.Stat(defaultVaultTokenFile)
+	slog.Debug("Ensuring vault token is available, and new enough", "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", vaultTokenAgeCutoff)
+	stat, err := os.Stat(k.String("vault.vaultTokenFile"))
 	if err != nil {
 		slog.Error("error getting file information about vault token file. Exiting", "error", err)
 		return
 	}
 
 	// if now.Sub(defaultVaultTokenAgeCutoff).After(stat.ModTime()) { // File is older than 7 days)
-	if stat.ModTime().Add(defaultVaultTokenAgeCutoff).Before(now) { // File is older than 7 days)
-		slog.Error("vault token file is older than the time cutoff. Exiting", "vaultTokenFile", defaultVaultTokenFile, "vaultTokenAgeCutoff", defaultVaultTokenAgeCutoff)
+	if stat.ModTime().Add(vaultTokenAgeCutoff).Before(now) { // File is older than 7 days)
+		slog.Error("vault token file is older than the time cutoff. Exiting", "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", vaultTokenAgeCutoff)
 		return
 	}
-	slog.Debug("Vault token file exists and is new enough", "vaultTokenFile", defaultVaultTokenFile, "vaultTokenAgeCutoff", defaultVaultTokenAgeCutoff)
+	slog.Debug("Vault token file exists and is new enough", "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", vaultTokenAgeCutoff)
 
 	// Make the above configurable!
 	//
@@ -72,13 +149,20 @@ func main() {
 	// TODO Make this all configurable.  We should have the ability to run a default htgettoken command, or override it with configuration
 	slog.Debug("Getting BEARER token to do cleanup")
 
+	minTimeLeft, err := time.ParseDuration(k.String("vault.minVaultTokenTimeLeft"))
+	if err != nil {
+		slog.Error("error parsing minimum vault token time left duration. Using default value", "error", err)
+		minTimeLeft = defaultVaultTokenTimeLeft
+	}
+
 	h := newHtgettokenClient(
-		vaultServer,
-		defaultVaultTokenFile,
-		defaultBearerTokenFile,
+		k.String("vault.server"),
+		k.String("vault.vaultTokenFile"),
+		k.String("vault.bearerTokenFile"),
+		fmt.Sprintf("--vaulttokenminttl=%ds", int(math.Round(minTimeLeft.Seconds()))),
 	)
 
-	tok, err := h.getToken(ctx, tokenExperiment, tokenRole)
+	tok, err := h.getToken(ctx, k.String("vault.experiment"), k.String("vault.role"))
 	if err != nil {
 		slog.Error("error getting and validating token", "error", err)
 		return
@@ -116,18 +200,21 @@ func main() {
 
 	gClient := &gfal2Client{
 		addedEnvironment: addedEnvironment,
+		fileCountLeft:    atomic.Int32{},
 	}
-	dClient := newDCacheClient(string(tok), true)
-	// TODO Put this back
-	// exptArea := experiment
-	// if override, ok := exptNameOverride[experiment]; ok {
-	// 	exptArea = override
-	// }
+	gClient.fileCountLeft.Store(int32(k.Int("totalFileCountLimit")))
 
-	// TODO Put this back
-	// source := ***REMOVED***
-	source := ***REMOVED*** + dropboxLocationOverride // TODO This is for testing
-	slog.Debug("Getting files list", "source", source)
+	dClient := newDCacheClient(string(tok), true)
+
+	exptNameOverride := k.StringMap("exptNameOverride")
+	exptArea := k.String("experiment") + "/resilient/jobsub_stage/"
+	if override, ok := exptNameOverride[k.String("experiment")]; ok {
+		exptArea = override
+	}
+
+	source := ***REMOVED*** + exptArea
+	slog.Info("Looking for files to delete in path", "dir", source, "experiment", k.String("experiment"))
+
 	filesTree, err := gClient.getFilesTree(ctx, source, nil, nil)
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):
@@ -151,25 +238,10 @@ func main() {
 	// TODO Note - if we exceed file limit, we may have directory that actually has files, but we didn't register them as entries.  We should make sure to
 	// not crash out if that's the case, and just continue so the next run can clear them out.  Maybe we return an error if the directory is not empty
 
-	// TODO DEBUG.  Don't need to make this code better, because it's going away.  We just want to go down two levels
-	for _, file := range flattenedFileEntries {
-		slog.Debug("File entry", "file", file.Name())
-		// level := 0
-		// fmt.Printf("File entry, level %d:%s\n\n", level, file)
-		// if len(file.containsFiles) > 0 {
-		// 	level++
-		// 	for _, subFile := range file.containsFiles {
-		// 		fmt.Printf("File entry, level %d:%s\n\n", level, subFile)
-		// 		if len(subFile.containsFiles) > 0 {
-		// 			level++
-		// 			for _, subSubFile := range subFile.containsFiles {
-		// 				fmt.Printf("File entry, level %d:%s\n\n", level, subSubFile)
-		// 			}
-		// 			level--
-		// 		}
-		// 		level--
-		// 	}
-		// }
+	if k.Bool("debug") {
+		for _, file := range flattenedFileEntries {
+			slog.Debug("File entry", "file", file.Name())
+		}
 	}
 
 	// Create a file map to hold the filenames and quickly eliminate files we don't want to delete
@@ -187,9 +259,9 @@ func main() {
 	// }
 
 	// Now, we need to get the condor job files
-	slog.Debug("Getting condor job files")
+	slog.Info("Getting condor job files")
 	jobFiles := make(map[string]struct{}, 0)
-	schedds, err := getCondorSchedds(ctx, scheddConstraint)
+	schedds, err := getCondorSchedds(ctx, k.String("condor.scheddConstraint"))
 	if err != nil {
 		// TODO Handle error
 		slog.Error("error getting condor schedds:", "error", err)
@@ -200,7 +272,7 @@ func main() {
 		return
 	}
 
-	if debug {
+	if k.Bool("debug") {
 		scheddNames := make([]string, 0, len(schedds))
 		for _, sch := range schedds {
 			scheddNames = append(scheddNames, sch.name)
@@ -208,59 +280,74 @@ func main() {
 		slog.Debug("Got condor schedds", "schedds", scheddNames)
 	}
 
-	// Set environment so we can use IDTOKENS for authentication
-	var oldSECClientAuthenticationMethods string
-	val, ok := os.LookupEnv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
-	if ok {
-		oldSECClientAuthenticationMethods = val
+	_auth := k.String("condor.authMethod")
+	authMethod := newCondorAuthMethod(_auth)
+	if authMethod == UNSUPPORTED {
+		slog.Warn("Unsupported condor authentication method", "method", _auth, "using default", defaultCondorAuthMethod)
+		authMethod = newCondorAuthMethod(defaultCondorAuthMethod)
 	}
 
-	err = os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "IDTOKENS")
-	if err != nil {
-		slog.Error("error setting environment variable for condor authentication methods", "error", err)
-		return
-	}
-	defer func() {
-		if oldSECClientAuthenticationMethods != "" {
-			os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", oldSECClientAuthenticationMethods)
-			slog.Debug("Restored old _condor_SEC_CLIENT_AUTHENTICATION_METHODS env var", "methods", oldSECClientAuthenticationMethods)
-			return
-		}
-		os.Unsetenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
-		slog.Debug("Unset _condor_SEC_CLIENT_AUTHENTICATION_METHODS environment variable")
-	}()
+	// Set environment so we can use IDTOKENS for authentication
+	// var oldSECClientAuthenticationMethods string
+	// val, ok := os.LookupEnv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
+	// if ok {
+	// 	oldSECClientAuthenticationMethods = val
+	// }
+
+	// err = os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "IDTOKENS")
+	// if err != nil {
+	// 	slog.Error("error setting environment variable for condor authentication methods", "error", err)
+	// 	return
+	// }
+	// defer func() {
+	// 	if oldSECClientAuthenticationMethods != "" {
+	// 		os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", oldSECClientAuthenticationMethods)
+	// 		slog.Debug("Restored old _condor_SEC_CLIENT_AUTHENTICATION_METHODS env var", "methods", oldSECClientAuthenticationMethods)
+	// 		return
+	// 	}
+	// 	os.Unsetenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
+	// 	slog.Debug("Unset _condor_SEC_CLIENT_AUTHENTICATION_METHODS environment variable")
+	// }()
 
 	// queriedScheddSuccessfully will be true if we successfully queried at least one schedd. If it remains false, we will not delete
 	// any files
+
+	// Set up schedd auth
+	cleanupEnv := authMethod.setupEnv()
+	defer cleanupEnv()
+
 	queriedScheddSuccessfully := false
 	for _, sch := range schedds {
-		// err := sch.verify(ctx, fakeCondorAuth)
-		sch.cmdEnv = os.Environ()
-		err := sch.verify(ctx, idTokenAuth)
-		if err != nil {
-			// TODO Handle error
-			slog.Error("error verifying authorization to condor schedd:", "error", err, "schedd", sch.name)
-			continue
-		}
-		ads, err := sch.getPNFSJobsForExperiment(ctx, experiment)
-		if err != nil {
-			// Handle error
-			slog.Error("error getting PNFS jobs:", "error", err, "schedd", sch.name)
-			continue
-		}
-		queriedScheddSuccessfully = true
-		for _, ad := range ads {
-			scheddFiles, err := sch.getDropboxFilesFromJob(ad)
+		func() {
+			sch.cmdEnv = os.Environ()
+
+			err := sch.verify(ctx, authMethod)
+			if err != nil {
+				// TODO Handle error
+				slog.Error("error verifying authorization to condor schedd:", "error", err, "schedd", sch.name, "authMethod", authMethod.String())
+				return
+			}
+
+			ads, err := sch.getPNFSJobsForExperiment(ctx, k.String("experiment"), k.String("condor.jobConstraint"))
 			if err != nil {
 				// Handle error
-				slog.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name) // TODO Get job ID?
-				continue
+				slog.Error("error getting PNFS jobs:", "error", err, "schedd", sch.name)
+				return
 			}
-			slog.Debug("Got schedd dropbox files", "schedd", sch.name, "files", scheddFiles)
-			for _, file := range scheddFiles {
-				jobFiles[file] = struct{}{}
+			queriedScheddSuccessfully = true
+			for _, ad := range ads {
+				scheddFiles, err := sch.getDropboxFilesFromJob(ad)
+				if err != nil {
+					// Handle error
+					slog.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name) // TODO Get job ID?
+					continue
+				}
+				slog.Debug("Got schedd dropbox files", "schedd", sch.name, "files", scheddFiles)
+				for _, file := range scheddFiles {
+					jobFiles[file] = struct{}{}
+				}
 			}
-		}
+		}()
 	}
 	if !queriedScheddSuccessfully {
 		slog.Error("No condor schedds were queried successfully. Exiting")
@@ -273,6 +360,12 @@ func main() {
 	// We are iterating a second time to check if the files are recent, which may not be totally efficient, but it should improve readability
 	// Maybe if we have performance problems, we first get the list of job files, then pass in a filter function to our tree-builder that could check
 	// for recency or job file membership
+	fileAgeCutoff, err := time.ParseDuration(k.String("deleteFilesOlderThan"))
+	if err != nil {
+		slog.Error("error parsing configured file age cutoff duration", "error", err)
+		return
+	}
+
 	slog.Debug("Are the files not recent or being used by condor jobs?")
 	for _, entry := range fileMap {
 		func(file *FileEntry) {
@@ -290,7 +383,7 @@ func main() {
 				removeFileAndAncestorsFromDeleteList()
 				return
 			}
-			if fileIsRecent(file, configuredFileAgeCutoff) {
+			if fileIsRecent(file, fileAgeCutoff) {
 				slog.Debug("File is recent, so we will not delete it:", "filename", file.Name())
 				removeFileAndAncestorsFromDeleteList()
 			}
@@ -302,7 +395,7 @@ func main() {
 		return
 	}
 
-	// TODO DEBUG
+	// TODO Test flag that stops execution here
 	slog.Debug("Remaining files to delete:")
 	for name := range fileMap {
 		slog.Debug("", "filename", name)

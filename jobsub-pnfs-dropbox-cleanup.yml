@@ -1,0 +1,24 @@
+totalFileCountLimit: 50
+# deleteFilesOlderThan: "720h"  # 30 days
+deleteFilesOlderThan: "1s"  # 30 days
+exptNameOverride:
+  "gm2": "GM2"
+  "mu2e": "mu2e/scratch/users/sbhat/fake_resilient/jobsub_stage/"  # TODO This is just for testing
+
+condor:
+  jobConstraint: "!IsUndefined(PNFS_INPUT_FILES)"
+  scheddConstraint: "IsJobsubLite == true && InDowntime == false"
+  authMethod: "IDTOKENS" # Currently a NOOP.  Will eventually make this actually do something
+
+vault:
+  server: ***REMOVED***
+  experiment: "mu2e"
+  # experiment: "fermilab"
+  role: ""
+  # role: "jobsubadmin"
+  vaultTokenFile: "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token-test"
+  # defaultVaultTokenFile  = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
+  bearerTokenFile: "/tmp/bt_jobsub-pnfs-dropbox-cleanup-test"
+  # defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
+  vaultTokenAgeCutoff: "168h" # 7 days
+  minVaultTokenTimeLeft: "72h" # 3 days

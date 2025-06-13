@@ -55,6 +55,43 @@ func TestCondorScheddGetDropboxFilesFromJob(t *testing.T) {
 	}
 }
 
+func TestBuildConstraint(t *testing.T) {
+	experiment := "test"
+	experimentPortion := "Jobsub_Group==\"" + experiment + "\""
+	type testCase struct {
+		description string
+		constraint  string
+		expected    string
+	}
+
+	testCases := []testCase{
+		{
+			"Empty constraint",
+			"",
+			experimentPortion,
+		},
+		{
+			"Simple constraint",
+			"!IsUndefined(PNFS_INPUT_FILES)",
+			experimentPortion + " && (!IsUndefined(PNFS_INPUT_FILES))",
+		},
+		{
+			"Multiple constraints",
+			"Name == \"schedd1\" || Arch == \"x86_64\"",
+			experimentPortion + " && (Name == \"schedd1\" || Arch == \"x86_64\")",
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(
+			test.description,
+			func(t *testing.T) {
+				assert.Equal(t, test.expected, buildConstraint(experiment, test.constraint))
+			},
+		)
+	}
+}
+
 func mapStringToClassAd(m map[string]string) classad.ClassAd {
 	ad := make(classad.ClassAd)
 	for k, v := range m {

@@ -79,6 +79,8 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 		cmdArgs = append(cmdArgs, "--role", role)
 	}
 
+	slog.Debug("Running htgettoken command", "command", htgettokenExecutable, "args", cmdArgs, "env", envString)
+
 	cmd := exec.CommandContext(ctx, htgettokenExecutable, cmdArgs...)
 	cmd.Env = append(cmd.Env, envString)
 	err := cmd.Run()

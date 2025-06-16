@@ -134,10 +134,8 @@ func setupIDTOKENEnvironment() (cleanupFunc func()) {
 	}
 }
 
-// Function that identifies and sets necessary items for authn/authz to the condor schedd
-type condorAuth func(context.Context, *condorSchedd) error
-
-// TODO fake auth that gets us through testing.
+// sciTokenAuth checks if the standard location for a scitoken has a valid scitoken. If so, it will
+// set the environment variable BEARER_TOKEN_FILE to that path
 func sciTokenAuth(ctx context.Context, c *condorSchedd) error {
 	if !checkForClientAuthMethod(ctx, SCITOKENS) {
 		msg := fmt.Sprintf("%s authentication method not supported by condor client", SCITOKENS.String())
@@ -145,7 +143,7 @@ func sciTokenAuth(ctx context.Context, c *condorSchedd) error {
 		return errors.New(msg)
 	}
 
-	// TODO implement bearer token discovery
+	// TODO next version implement bearer token discovery, or use it from scitokens-go
 	// Check for scitoken in the standard location
 	user, err := user.Current()
 	if err != nil {
@@ -166,7 +164,7 @@ func sciTokenAuth(ctx context.Context, c *condorSchedd) error {
 // It does not check the contents of the file, just that it exists and is readable.
 func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 	// Do we support IDTOKEN auth?
-	// TODO Can this be done with the condor library?
+	// TODO Can this be done with the condor library?  Not yet
 	// checkCmd := condor.NewCommand("/usr/bin/condor_config_val").WithArg("SEC_CLIENT_AUTHENTICATION_METHODS")
 	// slog.Debug("Running command", "command", append([]string{checkCmd.Command}, checkCmd.MakeArgs()...))
 	authMethod := IDTOKENS
@@ -232,8 +230,6 @@ func checkForClientAuthMethod(ctx context.Context, m condorAuthMethod) bool {
 	return false
 }
 
-// END TODO
-
 type condorSchedd struct {
 	name       string
 	cmdEnv     []string // place to store things like BEARER_TOKEN_FILE for condor commands
@@ -250,9 +246,8 @@ func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment 
 
 	condorCmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(useConstraint)
 	slog.Debug("Running command", "command", append([]string{condorCmd.Command}, condorCmd.MakeArgs()...))
-	// ads, err := cmd.RunWithContext(ctx)
 	cmd := condorCmd.CmdContext(ctx)
-	cmd.Env = append(os.Environ(), c.cmdEnv...) // TODO Make this configurable
+	cmd.Env = append(os.Environ(), c.cmdEnv...)
 	out, err := cmd.Output()
 	if err != nil {
 		// Handle Error

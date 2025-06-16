@@ -23,8 +23,9 @@ import (
 var lineRegex = regexp.MustCompile(`((?:\w|-)+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\w+\s+\d+\s+(?:(?:\d+:\d+)|\d+))\s+(.+)`)
 
 var (
-	defaultRetryCount    uint  = 5    // TODO implement retries
-	defaultFileCountLeft int32 = 1000 // Default file count limit
+	defaultRetryCount    uint          = 5
+	defaultRetrySleep    time.Duration = 5 * time.Second // Default sleep time between retries
+	defaultFileCountLeft int32         = 1000            // Default file count limit
 )
 
 var (
@@ -32,21 +33,29 @@ var (
 	dateWithYearLayout       string = "Jan 2 2006"
 )
 
-// This should probably have an authenticator (token or proxy?)
+// TODO This should probably have an authenticator (token or proxy?)
 type gfal2Client struct {
 	addedEnvironment []string
 	fileCountLeft    atomic.Int32
 	retryCount       uint
+	retrySleep       time.Duration
 }
 
-func newGfal2Client(fileCountLimit int, retryCount uint, environment []string) *gfal2Client {
+// newGfal2Client creates a new gfal2Client with the specified file count limit, retry count, retry sleep duration, and additional environment variables.
+// Passsing the zero-values of the parameters to this constructor will yield a usable default *gfal2Client.
+func newGfal2Client(fileCountLimit int, retryCount uint, retrySleep time.Duration, environment []string) *gfal2Client {
 	c := &gfal2Client{
 		addedEnvironment: environment,
 		retryCount:       defaultRetryCount,
+		retrySleep:       defaultRetrySleep,
 	}
 
 	if retryCount > 0 {
 		c.retryCount = retryCount
+	}
+
+	if retrySleep > 0 {
+		c.retrySleep = retrySleep
 	}
 
 	if fileCountLimit <= 0 {
@@ -73,13 +82,24 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 	c := exec.CommandContext(ctx, "gfal-ls", cmdArgs...)
 	c.Env = environ
 
-	slog.Debug("Running command", "command", c.String())
-	stdoutStderr, err := c.CombinedOutput()
-	// fmt.Println("Command output:", string(stdoutStderr))
-	if err != nil {
-		msg := "error running gfal-ls command"
-		slog.Error(msg, "error", err)
-		return nil, fmt.Errorf("%s: %w", msg, err)
+	var stdoutStderr []byte
+	var err error
+	for i := 0; i < int(g.retryCount); i++ {
+		slog.Debug("Running command", "command", c.String(), "try", i+1, "maxRetries", g.retryCount)
+		stdoutStderr, err = c.CombinedOutput()
+		// fmt.Println("Command output:", string(stdoutStderr))
+		if err != nil {
+			msg := "error running gfal-ls command"
+			slog.Error(msg, "error", err)
+			if i < int(g.retryCount)-1 {
+				slog.Debug("Will sleep 5s and then retry command", "try", i+1, "maxRetries", g.retryCount)
+				time.Sleep(g.retrySleep) // Sleep before retrying
+				continue
+			}
+			slog.Error("Max retries exceeded for command", "command", c.String(), "error", err)
+			return nil, fmt.Errorf("%s: %w", msg, err)
+		}
+		break
 	}
 
 	scanner := bufio.NewScanner(bytes.NewReader(stdoutStderr))

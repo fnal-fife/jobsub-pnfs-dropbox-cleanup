@@ -1,11 +1,15 @@
-totalFileCountLimit: 50
-retryCount: 5
+totalFileCountLimit: 9
+# totalFileCountLimit: 50
 # deleteFilesOlderThan: "720h"  # 30 days
 deleteFilesOlderThan: "1s"  # 30 days
 dCacheHostPort: "https://fndcadoor.fnal.gov:2880"
 exptNameOverride:
   "gm2": "GM2"
   "mu2e": "mu2e/scratch/users/sbhat/fake_resilient/jobsub_stage/"  # TODO This is just for testing
+
+gfal2:
+  retryCount: 5
+  retrySleep: "2s"
 
 condor:
   jobConstraint: "!IsUndefined(PNFS_INPUT_FILES)"

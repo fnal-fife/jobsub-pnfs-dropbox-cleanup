@@ -195,8 +195,15 @@ func main() {
 	// 	addedEnvironment: addedEnvironment,
 	// 	fileCountLeft:    atomic.Int32{},
 	// }
-	gClient := newGfal2Client(k.Int("totalFileCountLimit"), uint(k.Int("retryCount")), addedEnvironment)
-	// gClient.fileCountLeft.Store(int32(k.Int("totalFileCountLimit")))
+
+	var retryDuration time.Duration
+	retryDuration, err = time.ParseDuration(k.String("gfal2.retrySleep"))
+	if err != nil {
+		slog.Error("error parsing gfal2 retry sleep duration. Will use default", "error", err)
+		retryDuration = 0
+	}
+
+	gClient := newGfal2Client(k.Int("totalFileCountLimit"), uint(k.Int("gfal2.retryCount")), retryDuration, addedEnvironment)
 
 	dClient := newDCacheClient(string(tok), true)
 

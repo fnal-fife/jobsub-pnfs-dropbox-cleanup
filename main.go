@@ -9,7 +9,6 @@ import (
 	"math"
 	"net/url"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -49,7 +48,6 @@ var (
 	// configuredFileAgeCutoff = time.Duration(1 * time.Second) // TODO Configure this
 )
 
-// TODO Make this configurable
 // var exptNameOverride = map[string]string{
 // 	"gm2": "GM2",
 // 	// TODO This is just for testing
@@ -142,17 +140,13 @@ func main() {
 	}
 	slog.Debug("Vault token file exists and is new enough", "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", vaultTokenAgeCutoff)
 
-	// Make the above configurable!
-	//
-	// Pass this vault token to --vaulttokeninfile=path
-	// TODO Make this all configurable.  We should have the ability to run a default htgettoken command, or override it with configuration
-	slog.Debug("Getting BEARER token to do cleanup")
-
 	minTimeLeft, err := time.ParseDuration(k.String("vault.minVaultTokenTimeLeft"))
 	if err != nil {
 		slog.Error("error parsing minimum vault token time left duration. Using default value", "error", err)
 		minTimeLeft = defaultVaultTokenTimeLeft
 	}
+
+	slog.Debug("Getting BEARER token to do cleanup")
 
 	h := newHtgettokenClient(
 		k.String("vault.server"),
@@ -216,39 +210,32 @@ func main() {
 	source := dCacheHostPort + "/" + exptArea
 	slog.Info("Looking for files to delete in path", "dir", source, "experiment", k.String("experiment"))
 
-	filesTree, err := gClient.getFilesTree(ctx, source, nil, nil)
+	filesList, err := gClient.getFilesList(ctx, source, nil, nil)
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):
 		slog.Error("file count limit exceeded. Stopping collecting files now")
 	case err != nil:
 		slog.Error("error getting files list", "error", err)
 		return
-	default:
-		// Nil error
-		// TODO - do we need the default case?
 	}
 
-	if len(filesTree) == 0 {
+	if len(filesList) == 0 {
 		slog.Info("No files found in dropbox. Exiting")
 		return
 	}
 
-	// TODO combine this line into fileMap creating line like for _, file := range flattenEntryTree(files) {....
-	flattenedFileEntries := flattenEntryTree(filesTree) // TODO If performance suffers, throw out files after this executes. We shouldn't need files anymore after this
-
-	// TODO Note - if we exceed file limit, we may have directory that actually has files, but we didn't register them as entries.  We should make sure to
-	// not crash out if that's the case, and just continue so the next run can clear them out.  Maybe we return an error if the directory is not empty
-
-	if k.Bool("debug") {
-		for _, file := range flattenedFileEntries {
-			slog.Debug("File entry", "file", file.Name())
-		}
-	}
+	// if k.Bool("debug") {
+	// 	for _, file := range flattenedFileEntries {
+	// 		slog.Debug("File entry", "file", file.Name())
+	// 	}
+	// }
 
 	// Create a file map to hold the filenames and quickly eliminate files we don't want to delete
 	fileMap := make(fileEntryMap, 0)
-	for _, file := range flattenedFileEntries {
+	// for _, file := range flattenEntryTree(filesTree) {
+	for _, file := range filesList {
 		fileMap[file.Name()] = file
+		slog.Debug("File entry", "file", file.Name())
 	}
 
 	// for _, file := range files {
@@ -402,8 +389,6 @@ func main() {
 		slog.Debug("", "filename", name)
 	}
 
-	// TODO Need to check if directory is empty before deleting it
-
 	// TODO this took a ton of memory. Let's do this the "dumber" way and see if it works better that way
 	// Recursively walk the tree and delete files if they're in our list to delete
 	// deletedFiles := make([]string, 0, len(fileMap))
@@ -443,7 +428,6 @@ func main() {
 		// Remove the file
 		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
 		if err != nil {
-			// TODO Handle error
 			slog.Error("error deleting file", "error", err)
 			continue
 		}
@@ -482,7 +466,6 @@ func main() {
 		// Remove the file
 		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
 		if err != nil {
-			// TODO Handle error
 			slog.Error("error deleting directory", "error", err)
 			continue
 		}
@@ -653,15 +636,8 @@ func urlToFilename(URL string, filenameTransformFunc func(string) string) string
 	return filenameTransformFunc(sourceURL.Path)
 }
 
-// TODO Move this to a different file
-func prependPNFSToPath(urlPath string) string {
-	// TODO this should get fed by configuration
-	return filepath.Join("/pnfs", urlPath)
-}
-
 func stripPNFSFromPath(pnfsPath string) string {
 	// parts := filepath.SplitList(pnfsPath)
-	// // TODO this should get fed by configuration
 	// fmt.Println("Parts:", parts)
 	// if parts[0] != "/pnfs" {
 	// 	return ""
@@ -673,11 +649,9 @@ func stripPNFSFromPath(pnfsPath string) string {
 
 // TODO Move this to a different file
 func PNFSToHTTPS(pnfsPath string, urlHostPort string, filenameTransformFunc func(string) string) string {
-	// TODO this should get fed by configuration
 	// u, err := url.Parse("https://fndcadoor.fnal.gov:2880")
 	u, err := url.Parse(urlHostPort)
 	if err != nil {
-		// TODO Handle error
 		slog.Error("error parsing URL", "error", err)
 		return ""
 	}

@@ -59,7 +59,7 @@ func newGfal2Client(fileCountLimit int, retryCount uint, environment []string) *
 
 // TODO: Can this be implemented using a fs.WalkDirFunc?
 // Recursive
-func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry) ([]*FileEntry, error) {
+func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry) ([]*FileEntry, error) {
 	// Setup environment
 	environ := os.Environ()
 	environ = append(environ, g.addedEnvironment...)
@@ -88,7 +88,6 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 	errs := make([]error, 0)
 
 	sourceURL, err := url.Parse(source)
-	// TODO Make this more robust
 	if err != nil {
 		slog.Error("error parsing source URL", "source", source, "error", err)
 		return nil, fmt.Errorf("error parsing source URL: %w", err)
@@ -123,7 +122,7 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 			newSource := sourceURL.Scheme + "://" + sourceURL.Host + urlFile
 
 			// Get files in this directory recursively
-			files, err := g.getFilesTree(ctx, newSource, nil, entry)
+			files, err := g.getFilesList(ctx, newSource, nil, entry)
 			if err != nil {
 				// Skip this directory
 				// Handle error: print that there's an issue
@@ -132,6 +131,7 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 				continue
 			}
 			entry.containsFiles = files
+			dirContents = append(dirContents, files...) // Add the entries in this directory to the dirContents list before adding the directory itself
 		}
 		dirContents = append(dirContents, entry)
 	}
@@ -150,7 +150,6 @@ func (g *gfal2Client) getFilesTree(ctx context.Context, source string, dirConten
 	return dirContents, nil
 }
 
-// // TODO Need to apply recursion somewhere here to get files inside directories
 // func (g *gfal2Client) parseOutputToFileEntries(ctx context.Context, output []byte) ([]*FileEntry, error) {
 // 	// TODO Maybe add verbose?
 // 	fileEntries := make([]*FileEntry, 0)

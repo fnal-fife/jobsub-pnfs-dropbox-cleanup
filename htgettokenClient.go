@@ -30,6 +30,7 @@ type htgettokenClient struct {
 	outFile          string
 	options          []string
 	authFunc         func() (cleanupFunc func(), err error) // Function that sets up authorization for client
+	debug            bool                                   // Whether to enable debug mode for htgettoken
 }
 
 // newHtgettokenClient creates a new htgettokenClient instance. It will check that vaultTokenInFile exists and is readable.
@@ -55,6 +56,12 @@ func newHtgettokenClient(vaultServer, vaultTokenInFile, outFile string, options 
 		// Options to pass to the HTGETTOKENOPTS environment variable
 		options: options,
 	}
+}
+
+func (h *htgettokenClient) withDebug() *htgettokenClient {
+	// Add the --debug flag to the options
+	h.debug = true
+	return h
 }
 
 func (h *htgettokenClient) withAuthFunc(authFunc func() (func(), error)) *htgettokenClient {
@@ -141,6 +148,11 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 		h.outFile,
 	}
 
+	// h.debug triggers passing --verbose to htgettoken because --debug cause htgettoken to print the token strings themselves.  We don't want that
+	if h.debug {
+		cmdArgs = append(cmdArgs, "--verbose")
+	}
+
 	if role != "" {
 		cmdArgs = append(cmdArgs, "--role", role)
 	}
@@ -149,7 +161,19 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 
 	cmd := exec.CommandContext(ctx, htgettokenExecutable, cmdArgs...)
 	cmd.Env = append(cmd.Env, envString)
-	err := cmd.Run()
+
+	var runner func() error
+	runner = cmd.Run
+	// If we're in debug mode, we want to capture stdout and stderr
+	if h.debug {
+		runner = func() error {
+			stdoutStderr, err := cmd.CombinedOutput()
+			slog.Debug(string(stdoutStderr))
+			return err
+		}
+	}
+
+	err := runner()
 	if err != nil {
 		slog.Error("error running htgettoken to obtain bearer token", "error", err)
 		slog.Debug("htgettoken command", "command", cmd.String())

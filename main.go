@@ -124,6 +124,11 @@ func main() {
 		k.String("vault.bearerTokenFile"),
 		fmt.Sprintf("--vaulttokenminttl=%ds", int(math.Round(minTimeLeft.Seconds()))),
 	)
+
+	if k.Bool("debug") {
+		h = h.withDebug()
+	}
+
 	if k.String("vault.authMethod") == "kerberos" {
 		h = h.withKerberosKeytabAuth(k.String("vault.kerberosKeytabPath"), k.String("vault.kerberosPrincipal"))
 	}

@@ -18,6 +18,9 @@ condor:
 
 vault:
   server: ***REMOVED***
+  # authMethod: "kerberos" # "kerberos" is only supported method
+  # kerberosKeytabPath: /path/to/keytab 
+  # kerberosPrincipal: ***REMOVED***
   experiment: "mu2e"
   # experiment: "fermilab"
   role: ""

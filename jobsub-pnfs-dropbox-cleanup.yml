@@ -18,6 +18,9 @@ condor:
 
 vault:
   server: "htvaultprod.fnal.gov"
+  # authMethod: "kerberos" # "kerberos" is only supported method
+  # kerberosKeytabPath: /path/to/keytab 
+  # kerberosPrincipal: "jobsubadmin/resilientcleanup/fifeutilgpvm03.fnal.gov@FNAL.GOV"
   experiment: "mu2e"
   # experiment: "fermilab"
   role: ""

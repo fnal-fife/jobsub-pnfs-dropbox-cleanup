@@ -22,37 +22,11 @@ import (
 
 var now = time.Now()
 
-// Vars we will eventually configure in a config file
-// TODO Defaults should go here
+// Defaults
 var (
 	defaultVaultTokenTimeLeft = time.Duration(3 * 24 * time.Hour) // 3 days
 	defaultCondorAuthMethod   = "IDTOKENS"                        // Default condor authentication method
-	// experiment = "mu2e"
-	// dropboxLocationOverride = "mu2e/scratch/users/sbhat/fake_resilient/jobsub_stage/"
-	// scheddConstraint = "IsJobsubLite == true && InDowntime == false"
-	// schedd           = "jobsub03.fnal.gov"
-	// htgettoken
-	// vaultServer = "htvaultprod.fnal.gov"
-	// tokenExperiment        = "fermilab"
-	// tokenExperiment = "mu2e"
-	// tokenRole       = ""
-	// tokenRole             = "jobsubadmin"
-	// defaultVaultTokenFile = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token-test"
-	// // defaultVaultTokenFile  = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
-	// defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup-test"
-	// defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
-	//
-	// defaultVaultTokenAgeCutoff      = time.Duration(7 * 24 * time.Hour)
-	// totalFileCountLimit uint = 50
-	// configuredFileAgeCutoff         = time.Duration(30 * 24 * time.Hour) // TODO Configure this
-	// configuredFileAgeCutoff = time.Duration(1 * time.Second) // TODO Configure this
 )
-
-// var exptNameOverride = map[string]string{
-// 	"gm2": "GM2",
-// 	// TODO This is just for testing
-// 	"mu2e": "mu2e/scratch/users/sbhat/fake_resilient/jobsub_stage/",
-// }
 
 // Config holders
 var (
@@ -91,7 +65,6 @@ func initConfigAndFlags() {
 }
 
 func initLogs() {
-	// TODO Set up log handlers so that we have an info log, a debug log, and stdout/stderr gets debug logs
 	// Set up logging
 	if k == nil {
 		slog.Warn("koanf instance is nil, using default logging level", "level", "INFO")
@@ -102,9 +75,6 @@ func initLogs() {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
 		slog.Debug("Debug logging enabled")
 	}
-	// slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-	// 	Level: logLevel,
-	// })))
 	slog.Info("Initialized logging")
 }
 
@@ -154,6 +124,9 @@ func main() {
 		k.String("vault.bearerTokenFile"),
 		fmt.Sprintf("--vaulttokenminttl=%ds", int(math.Round(minTimeLeft.Seconds()))),
 	)
+	if k.String("vault.authMethod") == "kerberos" {
+		h = h.withKerberosKeytabAuth(k.String("vault.kerberosKeytabPath"), k.String("vault.kerberosPrincipal"))
+	}
 
 	tok, err := h.getToken(ctx, k.String("vault.experiment"), k.String("vault.role"))
 	if err != nil {

@@ -29,6 +29,7 @@ type htgettokenClient struct {
 	vaultTokenInFile string
 	outFile          string
 	options          []string
+	authFunc         func() (cleanupFunc func(), err error) // Function that sets up authorization for client
 }
 
 // newHtgettokenClient creates a new htgettokenClient instance. It will check that vaultTokenInFile exists and is readable.
@@ -56,8 +57,73 @@ func newHtgettokenClient(vaultServer, vaultTokenInFile, outFile string, options 
 	}
 }
 
+func (h *htgettokenClient) withAuthFunc(authFunc func() (func(), error)) *htgettokenClient {
+	// Set the auth function to be used by the client
+	h.authFunc = authFunc
+	return h
+}
+
+func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) *htgettokenClient {
+	f := func() (cleanup func(), err error) {
+		if keytabPath == "" || principal == "" {
+			return nil, fmt.Errorf("keytab path and principal must be provided for Kerberos authentication")
+		}
+		slog.Debug("Setting up Kerberos authentication", "keytab", keytabPath, "principal", principal)
+
+		// Create kerberos cache for this service
+		krb5ccCache, err := os.CreateTemp("", "jobsub-pnfs-dropbox-cleanup-krb5ccCache")
+		if err != nil {
+			slog.Error("Cannot create kerberos cache. Subsequent operations will fail.")
+			return nil, fmt.Errorf("error creating file kerberos cache: %w", err)
+		}
+
+		os.Setenv("KRB5CCNAME", "FILE:"+krb5ccCache.Name())
+
+		cleanupFunc := func() {
+			os.Unsetenv("KRB5CCNAME")
+			os.Remove(krb5ccCache.Name())
+			slog.Debug("Removed Kerberos credentials cache", "cache", krb5ccCache.Name())
+		}
+
+		// Get kerberos ticket from keytab
+		kinitPath, err := exec.LookPath("kinit")
+		if err != nil {
+			slog.Error("kinit executable not found in PATH", "error", err)
+			cleanupFunc()
+			return nil, fmt.Errorf("kinit executable not found in PATH: %w", err)
+		}
+
+		kinitCmd := exec.Command(kinitPath, "-k", "-t", keytabPath, principal)
+		kinitCmd.Env = os.Environ()
+		if err := kinitCmd.Run(); err != nil {
+			slog.Error("error running kinit to obtain Kerberos credentials", "error", err, "command", kinitCmd.String())
+			cleanupFunc()
+			return nil, fmt.Errorf("error running kinit: %w", err)
+		}
+
+		// Set HTGETTOKENOPTS to use the same credkey string as principal
+		credKey := strings.ReplaceAll(principal, "@FNAL.GOV", "")
+		h.options = append(h.options, fmt.Sprintf("--credkey=%s", credKey))
+
+		return cleanupFunc, nil
+	}
+	h = h.withAuthFunc(f)
+	return h
+}
+
 // getToken runs htgettoken to obtain a SciToken from the token issuer
 func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([]byte, error) {
+	if h.authFunc != nil {
+		cleanupFunc, err := h.authFunc()
+		if err != nil {
+			slog.Error("error setting up authentication for htgettoken", "error", err)
+			return nil, fmt.Errorf("error setting up authentication for htgettoken: %w", err)
+		}
+		if cleanupFunc != nil {
+			defer cleanupFunc()
+		}
+	}
+
 	opts := strings.Join(
 		mergeHtgettokenopts(os.Environ(), prepareHtgettokenopts(h.options)),
 		" ",

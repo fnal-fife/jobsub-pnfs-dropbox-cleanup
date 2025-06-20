@@ -4,7 +4,7 @@ totalFileCountLimit: 9
 deleteFilesOlderThan: "1s"  # 30 days
 dCacheHostPort: ***REMOVED***
 exptNameOverride:
-  "gm2": "GM2"
+  "gm2": "GM2/resilient/jobsub_stage"
   "mu2e": "mu2e/scratch/users/sbhat/fake_resilient/jobsub_stage/"  # TODO This is just for testing
 
 gfal2:
@@ -14,7 +14,7 @@ gfal2:
 condor:
   jobConstraint: "!IsUndefined(PNFS_INPUT_FILES)"
   scheddConstraint: "IsJobsubLite == true && InDowntime == false"
-  authMethod: "IDTOKENS" # Currently a NOOP.  Will eventually make this actually do something
+  authMethod: "IDTOKENS"
 
 vault:
   server: ***REMOVED***

@@ -65,6 +65,7 @@ func initConfigAndFlags() {
 	f.StringP("experiment", "e", "", "Experiment name to use for dropbox cleanup")
 	f.StringP("config", "c", defaultConfigFilePath, "Config file to load (default: /etc/jobsub-pnfs-dropbox-cleanup.yml)")
 	f.BoolP("debug", "d", false, "Enable debug logging")
+	f.BoolP("test", "t", false, "Run in test mode (no actual deletions)")
 
 	f.Parse(os.Args[1:])
 
@@ -387,10 +388,19 @@ func main() {
 		return
 	}
 
-	// TODO Test flag that stops execution here
+	if k.Bool("test") {
+		slog.Info("Running in test mode. No files will be deleted")
+		slog.Info("Would have deleted the following files:")
+		for name := range fileMap {
+			slog.Info("", "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
+		}
+		slog.Info("Stopping here")
+		return
+	}
+
 	slog.Debug("Remaining files to delete:")
 	for name := range fileMap {
-		slog.Debug("", "filename", name)
+		slog.Debug("", "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
 	}
 
 	// TODO this took a ton of memory. Let's do this the "dumber" way and see if it works better that way

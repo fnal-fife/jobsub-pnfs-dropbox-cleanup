@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -20,10 +21,24 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
+// TODO implement timeout
+// TODO implement looking for executables in PATH
+
 var now = time.Now()
 
 // Defaults
 var (
+	// Config file defaults
+	configDirName         = "jobsub-pnfs-dropbox-cleanup" // Directory name for config files
+	defaultConfigFileName = "jobsub-pnfs-dropbox-cleanup.yml"
+	defaultConfigFilePath = filepath.Join("/etc", configDirName, defaultConfigFileName)
+	// Directories to check for config files
+	configDirsToCheck = []string{
+		".",
+		filepath.Join(userConfigDir(), configDirName),
+		filepath.Join("/etc", configDirName),
+	}
+
 	defaultVaultTokenTimeLeft = time.Duration(3 * 24 * time.Hour) // 3 days
 	defaultCondorAuthMethod   = "IDTOKENS"                        // Default condor authentication method
 )
@@ -40,7 +55,7 @@ func init() {
 }
 
 func initConfigAndFlags() {
-	// Read flags and merge in
+	// Read flags
 	f.Usage = func() {
 		fmt.Println("Usage: jobsub-pnfs-dropbox-cleanup [options]")
 		fmt.Println("Options:")
@@ -48,12 +63,19 @@ func initConfigAndFlags() {
 		os.Exit(0)
 	}
 	f.StringP("experiment", "e", "", "Experiment name to use for dropbox cleanup")
+	f.StringP("config", "c", defaultConfigFilePath, "Config file to load (default: /etc/jobsub-pnfs-dropbox-cleanup.yml)")
 	f.BoolP("debug", "d", false, "Enable debug logging")
 
 	f.Parse(os.Args[1:])
 
 	// Load Config
-	if err := k.Load(file.Provider("jobsub-pnfs-dropbox-cleanup.yml"), yaml.Parser()); err != nil {
+	configFileFlagVal, _ := f.GetString("config") // If we fail to get this value, we'll just use the default value
+	configFilePath, err := getConfigFilePath(configFileFlagVal, configDirsToCheck)
+	if err != nil {
+		panic(fmt.Sprintf("error getting config file path: %v", err))
+	}
+
+	if err := k.Load(file.Provider(configFilePath), yaml.Parser()); err != nil {
 		panic(fmt.Sprintf("error loading config file: %v", err))
 	}
 
@@ -296,14 +318,12 @@ func main() {
 
 			err := sch.verify(ctx, authMethod)
 			if err != nil {
-				// TODO Handle error
 				slog.Error("error verifying authorization to condor schedd:", "error", err, "schedd", sch.name, "authMethod", authMethod.String())
 				return
 			}
 
 			ads, err := sch.getPNFSJobsForExperiment(ctx, k.String("experiment"), k.String("condor.jobConstraint"))
 			if err != nil {
-				// Handle error
 				slog.Error("error getting PNFS jobs:", "error", err, "schedd", sch.name)
 				return
 			}
@@ -311,7 +331,6 @@ func main() {
 			for _, ad := range ads {
 				scheddFiles, err := sch.getDropboxFilesFromJob(ad)
 				if err != nil {
-					// Handle error
 					slog.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name) // TODO Get job ID?
 					continue
 				}
@@ -759,3 +778,39 @@ type errDeleteFiles struct {
 func (e *errDeleteFiles) Error() string {
 	return fmt.Sprintf("Could not delete files: %v", e.files)
 }
+
+func userConfigDir() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		slog.Error("error getting user config directory", "error", err)
+		return ""
+	}
+	return dir
+}
+
+func getConfigFilePath(configFileFlagVal string, checkDirs []string) (string, error) {
+	// Check configFileFlag first
+	if configFileFlagVal != "" {
+		_, err := os.Stat(configFileFlagVal)
+		if err == nil {
+			// Config file exists, return it
+			return configFileFlagVal, nil
+		}
+	}
+
+	// Now check all of our checkDirs for the file
+	for _, dir := range checkDirs {
+		configFilePath := filepath.Join(dir, defaultConfigFileName)
+		_, err := os.Stat(configFilePath)
+		if err == nil {
+			// Config file exists in this directory, return it
+			slog.Info("Found config file", "configFilePath", configFilePath)
+			return configFilePath, nil
+		}
+	}
+	return "", errNoConfigFileFound
+}
+
+var (
+	errNoConfigFileFound = errors.New("no config file found in any of the specified directories")
+)

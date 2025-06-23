@@ -1,0 +1,4 @@
+# Cron.d file for jobsub-pnfs-dropbox-cleanup
+
+# M-F 09:15-16:15 every hour
+15 9-16 * * 1-5 rexbatch /usr/bin/jobsub-pnfs-dropbox-cleanup -e gm2 >> /var/log/jobsub-pnfs-dropbox-cleanup/info.log 2>&1

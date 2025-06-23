@@ -1,0 +1,10 @@
+# Logrotate file for jobsub-pnfs-dropbox-cleanup
+
+# Rotate info log weekly
+/var/log/jobsub-pnfs-dropbox-cleanup/*.log {
+    su rexbatch fife
+    weekly
+    missingok
+    dateext
+    compress
+}

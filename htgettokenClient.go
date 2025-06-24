@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -29,8 +30,8 @@ type htgettokenClient struct {
 	vaultTokenInFile string
 	outFile          string
 	options          []string
-	authFunc         func() (cleanupFunc func(), err error) // Function that sets up authorization for client
-	debug            bool                                   // Whether to enable debug mode for htgettoken
+	authFunc         func(ctx context.Context) (cleanupFunc func(), err error) // Function that sets up authorization for client
+	debug            bool                                                      // Whether to enable debug mode for htgettoken
 }
 
 // newHtgettokenClient creates a new htgettokenClient instance. It will check that vaultTokenInFile exists and is readable.
@@ -64,14 +65,14 @@ func (h *htgettokenClient) withDebug() *htgettokenClient {
 	return h
 }
 
-func (h *htgettokenClient) withAuthFunc(authFunc func() (func(), error)) *htgettokenClient {
+func (h *htgettokenClient) withAuthFunc(authFunc func(context.Context) (func(), error)) *htgettokenClient {
 	// Set the auth function to be used by the client
 	h.authFunc = authFunc
 	return h
 }
 
-func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) *htgettokenClient {
-	f := func() (cleanup func(), err error) {
+func (h *htgettokenClient) withKerberosKeytabAuth(ctx context.Context, keytabPath, principal string) *htgettokenClient {
+	f := func(ctx context.Context) (cleanup func(), err error) {
 		if keytabPath == "" || principal == "" {
 			return nil, fmt.Errorf("keytab path and principal must be provided for Kerberos authentication")
 		}
@@ -100,7 +101,7 @@ func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) 
 			return nil, fmt.Errorf("kinit executable not found in PATH: %w", err)
 		}
 
-		kinitCmd := exec.Command(kinitPath, "-k", "-t", keytabPath, principal)
+		kinitCmd := exec.CommandContext(ctx, kinitPath, "-k", "-t", keytabPath, principal)
 		kinitCmd.Env = os.Environ()
 		if err := kinitCmd.Run(); err != nil {
 			slog.Error("error running kinit to obtain Kerberos credentials", "error", err, "command", kinitCmd.String())
@@ -120,8 +121,19 @@ func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) 
 
 // getToken runs htgettoken to obtain a SciToken from the token issuer
 func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		msg := "context deadline exceeded while getting token"
+		if errors.Is(err, context.Canceled) {
+			msg = "context canceled while getting token"
+			slog.Error(msg, "error", err)
+			return nil, fmt.Errorf("%s: %w", msg, err)
+		}
+		slog.Error(msg, "error", err)
+		return nil, fmt.Errorf("%s: %w", msg, err)
+	}
+
 	if h.authFunc != nil {
-		cleanupFunc, err := h.authFunc()
+		cleanupFunc, err := h.authFunc(ctx)
 		if err != nil {
 			slog.Error("error setting up authentication for htgettoken", "error", err)
 			return nil, fmt.Errorf("error setting up authentication for htgettoken: %w", err)

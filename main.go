@@ -39,8 +39,11 @@ var (
 		filepath.Join("/etc", configDirName),
 	}
 
-	defaultVaultTokenTimeLeft = time.Duration(3 * 24 * time.Hour) // 3 days
-	defaultCondorAuthMethod   = "IDTOKENS"                        // Default condor authentication method
+	// Other defaults
+	defaultTimeout             = time.Duration(30 * time.Minute)   // Default timeout for the program
+	defaultVaultTokenTimeLeft  = time.Duration(3 * 24 * time.Hour) // 3 days
+	defaultVaultTokenAgeCutoff = time.Duration(7 * 24 * time.Hour) // 7 days
+	defaultCondorAuthMethod    = "IDTOKENS"                        // Default condor authentication method
 )
 
 // Config holders
@@ -109,13 +112,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
+	// Set up our context with timeout
+	timeout, err := time.ParseDuration(k.String("timeout"))
+	if err != nil {
+		slog.Error("error getting timeout from config. Using default timeout", "error", err, "defaultTimeout", defaultTimeout)
+		timeout = defaultTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
 	// Get token
 	vaultTokenAgeCutoff, err := time.ParseDuration(k.String("vault.vaultTokenAgeCutoff"))
 	if err != nil {
-		slog.Error("error parsing vault token age cutoff duration", "error", err)
-		return
+		slog.Error("error parsing vault token age cutoff duration. Using default vault token age cutoff", "error", err, "defaultVaultTokenAgeCutoff", defaultVaultTokenAgeCutoff)
+		vaultTokenAgeCutoff = defaultVaultTokenAgeCutoff
 	}
 
 	// First, make sure we have a vault token that is less than 7 days old. Read from /var/lib/jobsub-pnfs-dropbox-cleanup/vt_token
@@ -153,7 +163,7 @@ func main() {
 	}
 
 	if k.String("vault.authMethod") == "kerberos" {
-		h = h.withKerberosKeytabAuth(k.String("vault.kerberosKeytabPath"), k.String("vault.kerberosPrincipal"))
+		h = h.withKerberosKeytabAuth(ctx, k.String("vault.kerberosKeytabPath"), k.String("vault.kerberosPrincipal"))
 	}
 
 	tok, err := h.getToken(ctx, k.String("vault.experiment"), k.String("vault.role"))
@@ -161,26 +171,6 @@ func main() {
 		slog.Error("error getting and validating token", "error", err)
 		return
 	}
-
-	// cmdArgs := []string{
-	// 	"-a",
-	// 	vaultServer,
-	// 	"-i",
-	// 	tokenExperiment,
-	// 	"-r",
-	// 	tokenRole,
-	// 	"--vaulttokeninfile",
-	// 	defaultVaultTokenFile,
-	// 	"-o",
-	// 	defaultBearerTokenFile,
-	// }
-	// cmd := exec.CommandContext(ctx, "htgettoken", cmdArgs...)
-	// err = cmd.Run()
-	// if err != nil {
-	// 	slog.Error("error running htgettoken to obtain bearer token", "error", err)
-	// 	return
-	// }
-	// slog.Debug("got bearer token successfully", "bearerTokenFile", defaultBearerTokenFile)
 
 	// // Get files
 	addedEnvironment := []string{"BEARER_TOKEN=" + string(tok)}
@@ -821,6 +811,23 @@ func getConfigFilePath(configFileFlagVal string, checkDirs []string) (string, er
 	return "", errNoConfigFileFound
 }
 
+type stringGetter interface {
+	String(string) string
+}
+
+func getTimeoutFromConfig(s stringGetter) (time.Duration, error) {
+	timeoutStr := s.String("timeout")
+	if timeoutStr == "" {
+		return time.Duration(0), errNoTimeoutConfigured
+	}
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		return time.Duration(0), fmt.Errorf("error parsing timeout duration: %w", err)
+	}
+	return timeout, nil
+}
+
 var (
-	errNoConfigFileFound = errors.New("no config file found in any of the specified directories")
+	errNoConfigFileFound   = errors.New("no config file found in any of the specified directories")
+	errNoTimeoutConfigured = errors.New("no timeout configured in the configuration")
 )

@@ -455,7 +455,7 @@ func main() {
 			)
 		}
 		deletedFilenames = append(deletedFilenames, filename)
-		slog.Info("File deleted", "filename", filename)
+		slog.Info("File deleted", "filename", filename, "dateCreated", fileMap[filename].created)
 	}
 
 	for _, filename := range deletedFilenames {
@@ -485,7 +485,7 @@ func main() {
 		}
 
 		deletedFilenames = append(deletedFilenames, filename)
-		slog.Info("Empty directory deleted", "dirName", filename)
+		slog.Info("Empty directory deleted", "dirName", filename, "dateCreated", fileMap[filename].created)
 
 		// Keep walking up the tree and deleting empty directories recursively
 		// Remove the file from our map and from its parent's containsFiles slice

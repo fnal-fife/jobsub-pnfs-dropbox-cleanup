@@ -75,6 +75,17 @@ func newGfal2Client(fileCountLimit int, retryCount uint, retrySleep time.Duratio
 // TODO: Can this be implemented using a fs.WalkDirFunc?
 // Recursive
 func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry) ([]*FileEntry, error) {
+	if err := ctx.Err(); err != nil {
+		msg := "context deadline exceeded before getting files list"
+		if errors.Is(err, context.Canceled) {
+			msg = "context canceled before getting files list"
+			slog.Error(msg, "error", err)
+			return nil, fmt.Errorf("%s: %w", msg, err)
+		}
+		slog.Error(msg, "error", err)
+		return nil, fmt.Errorf("%s: %w", msg, err)
+	}
+
 	// Setup environment
 	environ := os.Environ()
 	environ = append(environ, g.addedEnvironment...)
@@ -193,30 +204,6 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 	return dirContents, nil
 }
 
-// func (g *gfal2Client) parseOutputToFileEntries(ctx context.Context, output []byte) ([]*FileEntry, error) {
-// 	// TODO Maybe add verbose?
-// 	fileEntries := make([]*FileEntry, 0)
-
-// 	scanner := bufio.NewScanner(bytes.NewReader(output))
-// 	scanner.Split(bufio.ScanLines) // Tokenize by line
-
-// 	for scanner.Scan() {
-// 		line := scanner.Text()
-// 		fmt.Println(line)
-// 		entry, err := g.fileListingToFileEntry(line)
-// 		if err != nil {
-// 			// Handle error: print that there's an issue
-// 			continue
-// 		}
-// 		fileEntries = append(fileEntries, entry)
-// 	}
-// 	if scanner.err() != nil {
-// 		// Handle error
-// 		return nil, scanner.err()
-// 	}
-// 	return fileEntries, nil
-// }
-
 func (g *gfal2Client) fileListingToFileEntry(line string, filenameTransformFunc func(string) string) (*FileEntry, error) {
 	var err error
 	lineParts := lineRegex.FindStringSubmatch(line)
@@ -279,6 +266,7 @@ func (g *gfal2Client) parseDateStampToTime(dateString string) (time.Time, error)
 	return rawDateStamp, nil
 }
 
+// This is unused for now, but we keep it here in case we want to use it later
 func (g *gfal2Client) removeFile(ctx context.Context, source string, isDir bool) error {
 	// Setup environment
 	environ := os.Environ()
@@ -293,7 +281,6 @@ func (g *gfal2Client) removeFile(ctx context.Context, source string, isDir bool)
 	cmdArgs = append(cmdArgs, source)
 
 	// gfal-rm <file>
-	// c := exec.CommandContext(ctx, "gfal-rm", cmdArgs...)
 	c := exec.CommandContext(ctx, "echo", cmdArgs...)
 	c.Env = environ
 

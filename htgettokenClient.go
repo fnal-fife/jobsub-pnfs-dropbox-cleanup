@@ -122,9 +122,9 @@ func (h *htgettokenClient) withKerberosKeytabAuth(ctx context.Context, keytabPat
 // getToken runs htgettoken to obtain a SciToken from the token issuer
 func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
-		msg := "context deadline exceeded while getting token"
+		msg := "context deadline exceeded before getting token"
 		if errors.Is(err, context.Canceled) {
-			msg = "context canceled while getting token"
+			msg = "context canceled before getting token"
 			slog.Error(msg, "error", err)
 			return nil, fmt.Errorf("%s: %w", msg, err)
 		}

@@ -292,6 +292,5 @@ func buildConstraint(experiment string, constraint string) string {
 }
 
 var (
-	errMissingJobDropboxFiles        = errors.New("required job attribute is missing to get job dropbox files")
-	errNoConfiguredClientAuthMethods = errors.New("no configured client authentication methods")
+	errMissingJobDropboxFiles = errors.New("required job attribute is missing to get job dropbox files")
 )

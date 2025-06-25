@@ -21,7 +21,6 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
-// TODO implement timeout
 // TODO implement looking for executables in PATH
 
 var now = time.Now()
@@ -160,7 +159,7 @@ func main() {
 		h = h.withDebug()
 	}
 	if k.String("vault.authMethod") == "kerberos" {
-		h = h.withKerberosKeytabAuth(ctx, k.String("vault.kerberosKeytabPath"), k.String("vault.kerberosPrincipal"))
+		h = h.withKerberosKeytabAuth(k.String("vault.kerberosKeytabPath"), k.String("vault.kerberosPrincipal"))
 	}
 
 	tok, err := h.getToken(ctx, k.String("vault.experiment"), k.String("vault.role"))
@@ -423,8 +422,6 @@ func main() {
 }
 
 /*
-1) Have vault tokens provided by managed tokens?
-2) htgettoken for bearer token (set -o flag to save it somewhere else)
 3) gfal-ls -l to get list of dirs (NOTE:  Need to use BEARER_TOKEN, not BEARER_TOKEN_FILE)
 4) for each dir in (3), output looks like:
 ```
@@ -553,115 +550,6 @@ func PNFSToHTTPS(pnfsPath string, urlHostPort string, filenameTransformFunc func
 	}
 	return u.JoinPath(filenameTransformFunc(pnfsPath)).String()
 }
-
-// TODO Move this to a different file
-// Returns list of deleted files
-// TODO Implement this
-// func deleteEmptyDirectoriesAndAncestors(ctx context.Context, client *gfal2Client) error {
-// 	// TODO Implement this
-// 	return nil
-// }
-
-// TODO Move this to a different file
-// Check membership in deleteMap.  Maybe we pass this in as a dynamic filter function in a future version to make it more flexible and testable
-// func tryDeleteFilesRecursively(ctx context.Context, entry *FileEntry, client *gfal2Client, deleteMap fileEntryMap, prevDeletedFiles []string) ([]string, error) {
-// 	// TODO DEBUG
-// 	fmt.Println("Trying to delete files recursively.  Entry:", entry.Name())
-// 	// END DEBUG
-
-// 	var retErr *errDeleteFiles
-// 	errFiles := make([]string, 0)
-
-// 	// Cases
-// 	if entry.isDirectory {
-// 		// Case: If the entry is a directory and not empty, recursively call this function on each of its children
-// 		if len(entry.containsFiles) != 0 {
-// 			for _, childFile := range entry.containsFiles {
-// 				deletedFiles, err := tryDeleteFilesRecursively(ctx, childFile, client, deleteMap, prevDeletedFiles)
-// 				if err != nil {
-// 					var testErr *errDeleteFiles
-// 					// TODO Handle error properly. Should use errDeleteFiles
-// 					fmt.Println("error deleting files recursively. Will continue:", err)
-// 					if errors.As(err, &testErr) {
-// 						errFiles = append(errFiles, err.(*errDeleteFiles).files...)
-// 					}
-// 					continue
-// 				}
-
-// 				prevDeletedFiles = append(prevDeletedFiles, deletedFiles...)
-// 			}
-
-// 			if len(errFiles) != 0 {
-// 				retErr = &errDeleteFiles{files: errFiles}
-// 			}
-// 			if len(entry.containsFiles) != 0 {
-// 				fmt.Println("Not all files within this directory were deleted successfully. Will move to next entry:", entry.Name())
-// 				return prevDeletedFiles, retErr
-// 			}
-// 		}
-
-// 		entry.containsFiles = nil // Nil this out so that the GC can clean it up and reclaim memory
-
-// 		// Case: If the entry is a directory and empty, delete it if it is in the deleteMap. This case also covers if we had a non-empty directory
-// 		// that we deleted all the files from
-// 		if _, ok := deleteMap[entry.Name()]; !ok {
-// 			fmt.Println("Directory is not in deleteMap, so we will not delete it:", entry.Name())
-// 			return prevDeletedFiles, nil
-// 		}
-
-// 		fmt.Println("Deleting empty directory:", entry.Name())
-// 		err := client.removeFile(ctx, PNFSToHTTPS(entry.Name(),  stripPNFSFromPath), true)
-// 		if err != nil {
-// 			// TODO Handle error
-// 			fmt.Println("error deleting empty directory:", err)
-// 			errFiles = append(errFiles, entry.Name())
-// 			return prevDeletedFiles, &errDeleteFiles{files: errFiles}
-// 		}
-// 		fmt.Println("Deleted empty directory:", entry.Name())
-// 		// Remove the directory from parent's containsFiles slice
-// 		// TODO maybe make this a function or method
-// 		if entry.parent != nil {
-// 			entry.parent.containsFiles = slices.DeleteFunc(
-// 				entry.parent.containsFiles,
-// 				func(f *FileEntry) bool {
-// 					return f.Name() == entry.Name()
-// 				},
-// 			)
-// 		}
-// 		if len(errFiles) != 0 {
-// 			return prevDeletedFiles, &errDeleteFiles{files: errFiles}
-// 		}
-// 		return prevDeletedFiles, nil
-// 	}
-
-// 	// Base case - if the entry is a file, delete it
-
-// 	// Don't delete the file if it's not in the deleteMap
-// 	if _, ok := deleteMap[entry.Name()]; !ok {
-// 		fmt.Println("Directory is not in deleteMap, so we will not delete it:", entry.Name())
-// 		return prevDeletedFiles, nil
-// 	}
-
-// 	fmt.Println("Deleting file:", entry.Name())
-// 	err := client.removeFile(ctx, PNFSToHTTPS(entry.Name(), stripPNFSFromPath), false)
-// 	if err != nil {
-// 		// TODO Handle error
-// 		fmt.Println("error deleting file:", err)
-// 		return nil, &errDeleteFiles{files: []string{entry.Name()}}
-// 	}
-// 	// File was deleted successfully.  Remove it from parent's containsFiles slice
-// 	if entry.parent != nil {
-// 		slices.DeleteFunc(
-// 			entry.parent.containsFiles,
-// 			func(f *FileEntry) bool {
-// 				return f.Name() == entry.Name()
-// 			},
-// 		)
-// 	}
-
-// 	prevDeletedFiles = append(prevDeletedFiles, entry.Name())
-// 	return prevDeletedFiles, nil
-// }
 
 type errDeleteFiles struct {
 	files []string

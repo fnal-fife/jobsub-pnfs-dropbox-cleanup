@@ -17,8 +17,8 @@ import (
 	classad "github.com/retzkek/htcondor-go/classad"
 )
 
-func getCondorSchedds(ctx context.Context, constraint string) ([]*condorSchedd, error) {
-	cmd := condor.NewCommand(***REMOVED***)
+func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSchedd, error) {
+	cmd := condor.NewCommand("/usr/bin/condor_status").WithPool(pool).WithConstraint(constraint).WithArg("-schedd")
 	slog.Debug("Running command", "command", append([]string{cmd.Command}, cmd.MakeArgs()...))
 	ads, err := cmd.RunWithContext(ctx)
 	if err != nil {

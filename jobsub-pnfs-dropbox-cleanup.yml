@@ -1,3 +1,4 @@
+timeout: "10m"
 totalFileCountLimit: 9
 # totalFileCountLimit: 50
 # deleteFilesOlderThan: "720h"  # 30 days
@@ -12,6 +13,7 @@ gfal2:
   retrySleep: "2s"
 
 condor:
+  pool: ***REMOVED***
   jobConstraint: "!IsUndefined(PNFS_INPUT_FILES)"
   scheddConstraint: "IsJobsubLite == true && InDowntime == false"
   authMethod: "IDTOKENS"

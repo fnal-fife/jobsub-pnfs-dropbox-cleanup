@@ -169,21 +169,8 @@ func main() {
 		return
 	}
 
-	// // Get files
+	// Get files
 	addedEnvironment := []string{"BEARER_TOKEN=" + string(tok)}
-	// tokenBytes, err := os.ReadFile(defaultBearerTokenFile)
-	// if err != nil {
-	// 	slog.Error("error reading token file", "error", err)
-	// 	return
-	// }
-	// tokenString := string(tokenBytes)
-	// addedEnvironment = append(addedEnvironment, "BEARER_TOKEN="+tokenString)
-
-	// gClient := &gfal2Client{
-	// 	addedEnvironment: addedEnvironment,
-	// 	fileCountLeft:    atomic.Int32{},
-	// }
-
 	var retryDuration time.Duration
 	retryDuration, err = time.ParseDuration(k.String("gfal2.retrySleep"))
 	if err != nil {
@@ -192,7 +179,6 @@ func main() {
 	}
 
 	gClient := newGfal2Client(k.Int("totalFileCountLimit"), uint(k.Int("gfal2.retryCount")), retryDuration, addedEnvironment)
-
 	dClient := newDCacheClient(string(tok), true)
 
 	exptNameOverride := k.StringMap("exptNameOverride")
@@ -219,34 +205,18 @@ func main() {
 		return
 	}
 
-	// if k.Bool("debug") {
-	// 	for _, file := range flattenedFileEntries {
-	// 		slog.Debug("File entry", "file", file.Name())
-	// 	}
-	// }
-
 	// Create a file map to hold the filenames and quickly eliminate files we don't want to delete
 	fileMap := make(fileEntryMap, 0)
-	// for _, file := range flattenEntryTree(filesTree) {
 	for _, file := range filesList {
 		fileMap[file.Name()] = file
 		slog.Debug("File entry", "file", file.Name())
 	}
 
-	// for _, file := range files {
-	// 	fmt.Printf("File entry:%s\n\n", file.String())
-	// }
-
-	// for _, file := range files {
-	// 	fmt.Printf("Filename: %s, isRecent:%t\n", file.Name(), fileIsRecent(file))
-	// }
-
 	// Now, we need to get the condor job files
 	slog.Info("Getting condor job files")
 	jobFiles := make(map[string]struct{}, 0)
-	schedds, err := getCondorSchedds(ctx, k.String("condor.scheddConstraint"))
+	schedds, err := getCondorSchedds(ctx, k.String("condor.pool"), k.String("condor.scheddConstraint"))
 	if err != nil {
-		// TODO Handle error
 		slog.Error("error getting condor schedds:", "error", err)
 		return
 	}
@@ -263,6 +233,7 @@ func main() {
 		slog.Debug("Got condor schedds", "schedds", scheddNames)
 	}
 
+	// Set up schedd auth
 	_auth := k.String("condor.authMethod")
 	authMethod := newCondorAuthMethod(_auth)
 	if authMethod == UNSUPPORTED {
@@ -270,36 +241,14 @@ func main() {
 		authMethod = newCondorAuthMethod(defaultCondorAuthMethod)
 	}
 
-	// Set environment so we can use IDTOKENS for authentication
-	// var oldSECClientAuthenticationMethods string
-	// val, ok := os.LookupEnv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
-	// if ok {
-	// 	oldSECClientAuthenticationMethods = val
-	// }
-
-	// err = os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "IDTOKENS")
-	// if err != nil {
-	// 	slog.Error("error setting environment variable for condor authentication methods", "error", err)
-	// 	return
-	// }
-	// defer func() {
-	// 	if oldSECClientAuthenticationMethods != "" {
-	// 		os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", oldSECClientAuthenticationMethods)
-	// 		slog.Debug("Restored old _condor_SEC_CLIENT_AUTHENTICATION_METHODS env var", "methods", oldSECClientAuthenticationMethods)
-	// 		return
-	// 	}
-	// 	os.Unsetenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
-	// 	slog.Debug("Unset _condor_SEC_CLIENT_AUTHENTICATION_METHODS environment variable")
-	// }()
-
-	// queriedScheddSuccessfully will be true if we successfully queried at least one schedd. If it remains false, we will not delete
-	// any files
-
-	// Set up schedd auth
 	cleanupEnv := authMethod.setupEnv()
 	defer cleanupEnv()
 
+	// queriedScheddSuccessfully will be true if we successfully queried at least one schedd. If it remains false, we will not delete
+	// any files
 	queriedScheddSuccessfully := false
+
+	// Now query our schedds for the files in use by condor jobs
 	for _, sch := range schedds {
 		func() {
 			sch.cmdEnv = os.Environ()
@@ -334,7 +283,7 @@ func main() {
 		return
 	}
 
-	slog.Debug("", "jobFiles", jobFiles) // TODO
+	slog.Debug("", "jobFiles", jobFiles)
 
 	// Remove any files from our delete list that are in the list of job files or are recent
 	// We are iterating a second time to check if the files are recent, which may not be totally efficient, but it should improve readability
@@ -390,41 +339,11 @@ func main() {
 		slog.Debug("", "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
 	}
 
-	// TODO this took a ton of memory. Let's do this the "dumber" way and see if it works better that way
-	// Recursively walk the tree and delete files if they're in our list to delete
-	// deletedFiles := make([]string, 0, len(fileMap))
-	// for _, entry := range filesTree {
-	// 	if len(deletedFiles) == len(fileMap) {
-	// 		fmt.Println("All files deleted.  Stopping.")
-	// 		break
-	// 	}
-
-	// 	_deletedFiles, err := tryDeleteFilesRecursively(ctx, entry, client, fileMap, deletedFiles)
-	// 	if err != nil {
-	// 		var testErr *errDeleteFiles
-	// 		if errors.As(err, &testErr) && len(_deletedFiles) != 0 {
-	// 			// Some worked, some didn't
-	// 			fmt.Println("Some files were deleted, some were not.  Continuing:")
-	// 			continue
-	// 		}
-	// 		// TODO Handle error
-	// 		fmt.Println("error deleting files recursively:", err)
-	// 		continue
-	// 	}
-	// 	deletedFiles = append(deletedFiles, _deletedFiles...)
-	// 	// For all of our deleted files , we need to remove them from the fileMap
-	// }
-
 	// Note:  This isn't as slick as recursion, but the former used way more memory, and actually made the program get killed by the OOM killer
 	// Do a pass where we start with deleting files, then their parents if they're empty
 	slog.Info("Deleting files")
 	deletedFilenames := make([]string, 0)
-	// for filename := range maps.Keys(fileMap) {
 	for filename := range fileMap.AllNonDirFilesNames() {
-		// if fileMap[filename].isDirectory {
-		// 	fmt.Println("Skipping directory", filename)
-		// 	continue
-		// }
 		slog.Debug("Deleting file:", "filename", filename)
 		// Remove the file
 		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
@@ -501,30 +420,6 @@ func main() {
 			_parent = _parent.parent
 		}
 	}
-
-	// Save some memory
-	for _, filename := range deletedFilenames {
-		delete(fileMap, filename)
-	}
-
-	// entries, err := client.parseOutputToFileEntries(ctx, out)
-	// if err != nil {
-	// 	fmt.Println("error parsing output to file entries:", err)
-	// 	// Handle error
-	// 	return
-	// }
-
-	// Check files
-	// walkDirFunc := func(path string, info os.FileInfo, err error) error {
-
-	// for _, entry := range entries {
-	// 	if entry != nil {
-	// 		fmt.Printf("File entry:\nname:%s\ndate:%s\nisDir:%t", entry.filename, entry.created, entry.isDirectory)
-	// 		if entry.isDirectory {
-	// 			fmt.Println("Looking inside directory")
-	// 			source1: =
-	// 	}
-	// }
 }
 
 /*

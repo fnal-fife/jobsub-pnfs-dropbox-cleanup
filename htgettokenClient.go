@@ -30,8 +30,8 @@ type htgettokenClient struct {
 	vaultTokenInFile string
 	outFile          string
 	options          []string
-	authFunc         func(ctx context.Context) (cleanupFunc func(), err error) // Function that sets up authorization for client
-	debug            bool                                                      // Whether to enable debug mode for htgettoken
+	debug            bool     // Whether to enable debug mode for htgettoken
+	auth             authFunc // Function that sets up authorization for client
 }
 
 // newHtgettokenClient creates a new htgettokenClient instance. It will check that vaultTokenInFile exists and is readable.
@@ -65,13 +65,15 @@ func (h *htgettokenClient) withDebug() *htgettokenClient {
 	return h
 }
 
-func (h *htgettokenClient) withAuthFunc(authFunc func(context.Context) (func(), error)) *htgettokenClient {
+type authFunc func(ctx context.Context) (cleanupFunc func(), err error)
+
+func (h *htgettokenClient) withAuthFunc(a authFunc) *htgettokenClient {
 	// Set the auth function to be used by the client
-	h.authFunc = authFunc
+	h.auth = a
 	return h
 }
 
-func (h *htgettokenClient) withKerberosKeytabAuth(ctx context.Context, keytabPath, principal string) *htgettokenClient {
+func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) *htgettokenClient {
 	f := func(ctx context.Context) (cleanup func(), err error) {
 		if keytabPath == "" || principal == "" {
 			return nil, fmt.Errorf("keytab path and principal must be provided for Kerberos authentication")
@@ -132,8 +134,8 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
-	if h.authFunc != nil {
-		cleanupFunc, err := h.authFunc(ctx)
+	if h.auth != nil {
+		cleanupFunc, err := h.auth(ctx)
 		if err != nil {
 			slog.Error("error setting up authentication for htgettoken", "error", err)
 			return nil, fmt.Errorf("error setting up authentication for htgettoken: %w", err)

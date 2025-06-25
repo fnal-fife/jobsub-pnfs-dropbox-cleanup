@@ -128,7 +128,7 @@ func main() {
 		vaultTokenAgeCutoff = defaultVaultTokenAgeCutoff
 	}
 
-	// First, make sure we have a vault token that is less than 7 days old. Read from /var/lib/jobsub-pnfs-dropbox-cleanup/vt_token
+	// First, make sure we have a vault token that new enough. Read from /var/lib/jobsub-pnfs-dropbox-cleanup/vt_token
 	slog.Debug("Ensuring vault token is available, and new enough", "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", vaultTokenAgeCutoff)
 	stat, err := os.Stat(k.String("vault.vaultTokenFile"))
 	if err != nil {
@@ -136,8 +136,7 @@ func main() {
 		return
 	}
 
-	// if now.Sub(defaultVaultTokenAgeCutoff).After(stat.ModTime()) { // File is older than 7 days)
-	if stat.ModTime().Add(vaultTokenAgeCutoff).Before(now) { // File is older than 7 days)
+	if stat.ModTime().Add(vaultTokenAgeCutoff).Before(now) { // File is older than vaultTokenAgeCutoff
 		slog.Error("vault token file is older than the time cutoff. Exiting", "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", vaultTokenAgeCutoff)
 		return
 	}
@@ -157,11 +156,9 @@ func main() {
 		k.String("vault.bearerTokenFile"),
 		fmt.Sprintf("--vaulttokenminttl=%ds", int(math.Round(minTimeLeft.Seconds()))),
 	)
-
 	if k.Bool("debug") {
 		h = h.withDebug()
 	}
-
 	if k.String("vault.authMethod") == "kerberos" {
 		h = h.withKerberosKeytabAuth(ctx, k.String("vault.kerberosKeytabPath"), k.String("vault.kerberosPrincipal"))
 	}

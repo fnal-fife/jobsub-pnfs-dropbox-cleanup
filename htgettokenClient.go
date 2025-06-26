@@ -14,15 +14,19 @@ import (
 	scitokens "github.com/scitokens/scitokens-go"
 )
 
-var htgettokenExecutable string
-
 func init() {
-	var err error
-	if htgettokenExecutable, err = exec.LookPath("htgettoken"); err != nil {
-		msg := "htgettoken executable not found in PATH"
-		slog.Error(msg, "error", err)
-		panic(msg)
+	// Check for all required executables
+
+	if _, ok := exeMap["htgettoken"]; ok {
+		return // Already found this executable
 	}
+
+	p, err := exec.LookPath("htgettoken")
+	if err != nil {
+		panic("Required executable htgettoken not found in PATH")
+	}
+	exeMap["htgettoken"] = p
+	slog.Info("Found all required executables for htgettoken client operations")
 }
 
 type htgettokenClient struct {
@@ -171,9 +175,9 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 		cmdArgs = append(cmdArgs, "--role", role)
 	}
 
-	cmd := exec.CommandContext(ctx, htgettokenExecutable, cmdArgs...)
+	cmd := exec.CommandContext(ctx, exeMap["htgettoken"], cmdArgs...)
 	cmd.Env = append(os.Environ(), envString)
-	slog.Debug("Running htgettoken command", "command", htgettokenExecutable, "args", cmdArgs, "env", cmd.Env)
+	slog.Debug("Running htgettoken command", "command", exeMap["htgettoken"], "args", cmdArgs, "env", cmd.Env)
 
 	var runner func() error
 	runner = cmd.Run

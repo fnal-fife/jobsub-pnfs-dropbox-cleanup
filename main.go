@@ -21,9 +21,8 @@ import (
 	flag "github.com/spf13/pflag"
 )
 
-// TODO implement looking for executables in PATH
-
 var now = time.Now()
+var exeMap = map[string]string{} // Map of all the executables we will need to find in PATH
 
 // Defaults
 var (

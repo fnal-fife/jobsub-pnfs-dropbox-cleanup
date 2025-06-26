@@ -36,6 +36,26 @@ var (
 	dateWithYearLayout       string = "Jan 2 2006"
 )
 
+func init() {
+	// Check for all required executables
+	requiredExecutables := []string{
+		"gfal-ls",
+		"gfal-rm",
+	}
+	for _, exe := range requiredExecutables {
+		if _, ok := exeMap[exe]; ok {
+			continue // Already found this executable
+		}
+
+		p, err := exec.LookPath(exe)
+		if err != nil {
+			panic(fmt.Sprintf("Required executable %s not found in PATH", exe))
+		}
+		exeMap[exe] = p
+	}
+	slog.Info("Found all required executables for gfal2Client operations")
+}
+
 // TODO This should probably have an authenticator (token or proxy?)
 type gfal2Client struct {
 	addedEnvironment []string
@@ -281,7 +301,7 @@ func (g *gfal2Client) removeFile(ctx context.Context, source string, isDir bool)
 	cmdArgs = append(cmdArgs, source)
 
 	// gfal-rm <file>
-	c := exec.CommandContext(ctx, "echo", cmdArgs...)
+	c := exec.CommandContext(ctx, "gfal-rm", cmdArgs...)
 	c.Env = environ
 
 	slog.Debug("Running delete command", "command", c.String())

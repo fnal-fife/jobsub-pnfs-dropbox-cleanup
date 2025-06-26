@@ -17,8 +17,30 @@ import (
 	classad "github.com/retzkek/htcondor-go/classad"
 )
 
+func init() {
+	// Check for all required executables
+	requiredExecutables := []string{
+		"condor_status",
+		"condor_config_val",
+		"condor_q",
+		"httokendecode",
+	}
+	for _, exe := range requiredExecutables {
+		if _, ok := exeMap[exe]; ok {
+			continue // Already found this executable
+		}
+
+		p, err := exec.LookPath(exe)
+		if err != nil {
+			panic(fmt.Sprintf("Required executable %s not found in PATH", exe))
+		}
+		exeMap[exe] = p
+	}
+	slog.Info("Found all required executables for condor operations")
+}
+
 func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSchedd, error) {
-	cmd := condor.NewCommand("/usr/bin/condor_status").WithPool(pool).WithConstraint(constraint).WithArg("-schedd")
+	cmd := condor.NewCommand(exeMap["condor_status"]).WithPool(pool).WithConstraint(constraint).WithArg("-schedd")
 	slog.Debug("Running command", "command", append([]string{cmd.Command}, cmd.MakeArgs()...))
 	ads, err := cmd.RunWithContext(ctx)
 	if err != nil {
@@ -151,7 +173,7 @@ func sciTokenAuth(ctx context.Context, c *condorSchedd) error {
 		return err
 	}
 	tokenFile := path.Join("/", "run", "user", user.Uid, "bt_u"+user.Uid)
-	cmd := exec.CommandContext(ctx, "/usr/bin/httokendecode", tokenFile)
+	cmd := exec.CommandContext(ctx, exeMap["httokendecode"], tokenFile)
 	if err := cmd.Run(); err != nil {
 		slog.Error("error running httokendecode", "error", err, "command", cmd.String())
 		return err
@@ -207,7 +229,7 @@ func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 }
 
 func checkForClientAuthMethod(ctx context.Context, m condorAuthMethod) bool {
-	checkCmd := exec.CommandContext(ctx, "/usr/bin/condor_config_val", "SEC_CLIENT_AUTHENTICATION_METHODS")
+	checkCmd := exec.CommandContext(ctx, exeMap["condor_config_val"], "SEC_CLIENT_AUTHENTICATION_METHODS")
 	slog.Debug("Running command", "command", checkCmd.String())
 	stdoutStderr, err := checkCmd.CombinedOutput()
 	if err != nil {
@@ -244,7 +266,7 @@ func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment 
 	useConstraint := buildConstraint(experiment, constraint)
 	slog.Debug("Final job constraint", "constraint", useConstraint)
 
-	condorCmd := condor.NewCommand("/usr/bin/condor_q").WithName(c.name).WithConstraint(useConstraint)
+	condorCmd := condor.NewCommand(exeMap["condor_q"]).WithName(c.name).WithConstraint(useConstraint)
 	slog.Debug("Running command", "command", append([]string{condorCmd.Command}, condorCmd.MakeArgs()...))
 	cmd := condorCmd.CmdContext(ctx)
 	cmd.Env = append(os.Environ(), c.cmdEnv...)

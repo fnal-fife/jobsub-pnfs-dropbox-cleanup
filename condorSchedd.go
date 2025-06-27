@@ -19,17 +19,33 @@ import (
 
 func init() {
 	// Check for all required executables
-	requiredExecutables := []string{
-		"condor_status",
-		"condor_config_val",
-		"condor_q",
-		"httokendecode",
+
+	// We handle this differently than the other clients because a lot of the time, the jobsub_lite RPM may be installed on the same
+	// machine that is running this code.  The jobsub_lite RPM installs its own versions of the condor executables, and puts them
+	// in front of the default condor executables in the PATH. So we need to check for the existence of the executables in the default
+	// locations that condor installs the executables at first, and then fall back to looking in the PATH.
+	requiredExecutablesDefault := map[string]string{
+		"condor_status":     "/usr/bin/condor_status",
+		"condor_config_val": "/usr/bin/condor_config_val",
+		"condor_q":          "/usr/bin/condor_q",
+		"httokendecode":     "",
 	}
-	for _, exe := range requiredExecutables {
+
+	for exe, defaultPath := range requiredExecutablesDefault {
 		if _, ok := exeMap[exe]; ok {
 			continue // Already found this executable
 		}
 
+		// Make sure default locations of required executables exist
+		if defaultPath != "" {
+			_, err := os.Stat(defaultPath)
+			if err == nil {
+				exeMap[exe] = defaultPath
+				continue // Found the executable at the default path
+			}
+		}
+
+		// We either don't have a default path or it doesn't exist, so look in PATH
 		p, err := exec.LookPath(exe)
 		if err != nil {
 			panic(fmt.Sprintf("Required executable %s not found in PATH", exe))

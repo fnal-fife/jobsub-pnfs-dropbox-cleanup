@@ -10,8 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TODO have an HtgettokenClient type that implements getTokener
-
 func TestNewHtgettokenClient(t *testing.T) {
 	tempDir := t.TempDir()
 	vaultServer := "https://vault.example.com"

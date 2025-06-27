@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -76,6 +77,59 @@ func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSc
 		schedds = append(schedds, schedd)
 	}
 	return schedds, nil
+}
+
+type condorSchedd struct {
+	name       string
+	cmdEnv     []string // place to store things like BEARER_TOKEN_FILE for condor commands
+	authMethod []condorAuthMethod
+}
+
+func (c *condorSchedd) verify(ctx context.Context, a condorAuthMethod) error {
+	return a.verify(ctx, c)
+}
+
+func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string, constraint string) ([]classad.ClassAd, error) {
+	useConstraint := buildConstraint(experiment, constraint)
+	slog.Debug("Final job constraint", "constraint", useConstraint)
+
+	condorCmd := condor.NewCommand(exeMap["condor_q"]).WithName(c.name).WithConstraint(useConstraint)
+	slog.Debug("Running command", "command", append([]string{condorCmd.Command}, condorCmd.MakeArgs()...))
+	cmd := condorCmd.CmdContext(ctx)
+	cmd.Env = append(os.Environ(), c.cmdEnv...)
+	out, err := cmd.Output()
+	if err != nil {
+		// Handle Error
+		msg := "error querying condorSchedd for PNFS-using jobs"
+		slog.Error(msg, "error", err)
+		return nil, fmt.Errorf("%s: %w", msg, err)
+	}
+	ads, err := classad.ReadClassAds(bytes.NewReader(out))
+	if err != nil {
+		slog.Error("error reading classads from condor_q output", "error", err)
+		return nil, fmt.Errorf("error reading classads: %w", err)
+	}
+
+	return ads, nil
+}
+
+func (c *condorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, error) {
+	stringAd := jobAd.Strings()
+
+	attribute := "PNFS_INPUT_FILES"
+	val, ok := stringAd[attribute]
+	if !ok {
+		return nil, errMissingJobDropboxFiles
+	}
+
+	rawSlice := strings.Split(val, ",")
+	finalSlice := make([]string, 0, len(rawSlice))
+
+	for _, elt := range rawSlice {
+		finalSlice = append(finalSlice, strings.TrimSpace(elt))
+	}
+	return finalSlice, nil
+
 }
 
 type condorAuthMethod int
@@ -209,7 +263,7 @@ func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 	if !checkForClientAuthMethod(ctx, authMethod) {
 		msg := fmt.Sprintf("%s authentication method not supported by condor client", authMethod.String())
 		slog.Error(msg)
-		return errors.New(msg)
+		return errUnsupportedCondorAuthMethod
 	}
 
 	// Does at least one IDTOKEN file exist in the expected location?
@@ -221,7 +275,7 @@ func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 	expectedPath := filepath.Join(homeDir, ".condor", "tokens.d")
 	files, err := os.ReadDir(expectedPath)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			slog.Error("IDTOKEN directory does not exist - should be at ~/.condor/tokens.d", "directory", expectedPath)
 			return err
 		}
@@ -229,6 +283,7 @@ func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 		return err
 	}
 
+	foundNonDirFile := false
 	for _, file := range files {
 		_, err := os.Stat(filepath.Join(expectedPath, file.Name()))
 		if err != nil {
@@ -237,9 +292,15 @@ func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 		}
 		if !file.IsDir() {
 			slog.Debug("Verified that tokens directory is non-empty. Proceeding with IDTOKEN auth")
+			foundNonDirFile = true
 			break
 		}
 	}
+	if !foundNonDirFile {
+		slog.Error("No IDTOKEN files found in expected location")
+		return errNoIDTokensFound
+	}
+
 	c.authMethod = append(c.authMethod, IDTOKENS)
 	return nil
 }
@@ -268,59 +329,6 @@ func checkForClientAuthMethod(ctx context.Context, m condorAuthMethod) bool {
 	return false
 }
 
-type condorSchedd struct {
-	name       string
-	cmdEnv     []string // place to store things like BEARER_TOKEN_FILE for condor commands
-	authMethod []condorAuthMethod
-}
-
-func (c *condorSchedd) verify(ctx context.Context, a condorAuthMethod) error {
-	return a.verify(ctx, c)
-}
-
-func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string, constraint string) ([]classad.ClassAd, error) {
-	useConstraint := buildConstraint(experiment, constraint)
-	slog.Debug("Final job constraint", "constraint", useConstraint)
-
-	condorCmd := condor.NewCommand(exeMap["condor_q"]).WithName(c.name).WithConstraint(useConstraint)
-	slog.Debug("Running command", "command", append([]string{condorCmd.Command}, condorCmd.MakeArgs()...))
-	cmd := condorCmd.CmdContext(ctx)
-	cmd.Env = append(os.Environ(), c.cmdEnv...)
-	out, err := cmd.Output()
-	if err != nil {
-		// Handle Error
-		msg := "error querying condorSchedd for PNFS-using jobs"
-		slog.Error(msg, "error", err)
-		return nil, fmt.Errorf("%s: %w", msg, err)
-	}
-	ads, err := classad.ReadClassAds(bytes.NewReader(out))
-	if err != nil {
-		slog.Error("error reading classads from condor_q output", "error", err)
-		return nil, fmt.Errorf("error reading classads: %w", err)
-	}
-
-	return ads, nil
-}
-
-func (c *condorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, error) {
-	stringAd := jobAd.Strings()
-
-	attribute := "PNFS_INPUT_FILES"
-	val, ok := stringAd[attribute]
-	if !ok {
-		return nil, errMissingJobDropboxFiles
-	}
-
-	rawSlice := strings.Split(val, ",")
-	finalSlice := make([]string, 0, len(rawSlice))
-
-	for _, elt := range rawSlice {
-		finalSlice = append(finalSlice, strings.TrimSpace(elt))
-	}
-	return finalSlice, nil
-
-}
-
 func buildConstraint(experiment string, constraint string) string {
 	exptConstraint := "Jobsub_Group==\"" + experiment + "\""
 	if constraint == "" {
@@ -330,5 +338,7 @@ func buildConstraint(experiment string, constraint string) string {
 }
 
 var (
-	errMissingJobDropboxFiles = errors.New("required job attribute is missing to get job dropbox files")
+	errMissingJobDropboxFiles      = errors.New("required job attribute is missing to get job dropbox files")
+	errUnsupportedCondorAuthMethod = errors.New("unsupported condor authentication method")
+	errNoIDTokensFound             = errors.New("no IDTOKEN files found in expected location")
 )

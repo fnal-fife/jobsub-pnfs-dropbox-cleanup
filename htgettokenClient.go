@@ -30,23 +30,23 @@ func init() {
 }
 
 type htgettokenClient struct {
-	vaultServer      string
-	vaultTokenInFile string
-	outFile          string
-	options          []string
-	debug            bool     // Whether to enable debug mode for htgettoken
-	auth             authFunc // Function that sets up authorization for client
+	vaultServer    string
+	vaultTokenFile string
+	outFile        string
+	options        []string
+	debug          bool     // Whether to enable debug mode for htgettoken
+	auth           authFunc // Function that sets up authorization for client
 }
 
-// newHtgettokenClient creates a new htgettokenClient instance. It will check that vaultTokenInFile exists and is readable.
+// newHtgettokenClient creates a new htgettokenClient instance. It will check that vaultTokenFile exists and is readable.
 // outFile and options are optional - if not provided, they will be set to default values. If
 // options are provided, they will be passed to the HTGETTOKENOPTS environment variable.
-func newHtgettokenClient(vaultServer, vaultTokenInFile, outFile string, options ...string) *htgettokenClient {
-	if vaultTokenInFile != "" {
-		_, err := os.Stat(vaultTokenInFile)
+func newHtgettokenClient(vaultServer, vaultTokenFile, outFile string, options ...string) *htgettokenClient {
+	if vaultTokenFile != "" {
+		_, err := os.Stat(vaultTokenFile)
 		if err != nil {
 			if os.IsNotExist(err) {
-				slog.Error("vault token file does not exist", "file", vaultTokenInFile)
+				slog.Error("vault token file does not exist", "file", vaultTokenFile)
 				return nil
 			}
 			slog.Error("error getting file information about vault token file", "error", err)
@@ -55,9 +55,9 @@ func newHtgettokenClient(vaultServer, vaultTokenInFile, outFile string, options 
 	}
 
 	return &htgettokenClient{
-		vaultServer:      vaultServer,
-		vaultTokenInFile: vaultTokenInFile,
-		outFile:          outFile,
+		vaultServer:    vaultServer,
+		vaultTokenFile: vaultTokenFile,
+		outFile:        outFile,
 		// Options to pass to the HTGETTOKENOPTS environment variable
 		options: options,
 	}
@@ -160,8 +160,8 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 		h.vaultServer,
 		"-i",
 		issuer,
-		"--vaulttokeninfile",
-		h.vaultTokenInFile,
+		"--vaulttokenfile",
+		h.vaultTokenFile,
 		"-o",
 		h.outFile,
 	}

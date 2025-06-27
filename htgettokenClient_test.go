@@ -15,7 +15,7 @@ import (
 func TestNewHtgettokenClient(t *testing.T) {
 	tempDir := t.TempDir()
 	vaultServer := "https://vault.example.com"
-	vaultTokenInFile, err := os.CreateTemp(tempDir, "vault_token_file")
+	vaultTokenFile, err := os.CreateTemp(tempDir, "vault_token_file")
 	if err != nil {
 		t.Error("failed to create temporary vault token file:", err)
 	}
@@ -33,38 +33,38 @@ func TestNewHtgettokenClient(t *testing.T) {
 	}
 
 	type testCase struct {
-		description      string
-		setupFunc        func(*testing.T)
-		vaultTokenInFile string
-		options          []string
-		expected         *htgettokenClient
-		expectedStderr   []string
+		description    string
+		setupFunc      func(*testing.T)
+		vaultTokenFile string
+		options        []string
+		expected       *htgettokenClient
+		expectedStderr []string
 	}
 
 	testCases := []testCase{
 		{
 			"Default client with no options",
 			func(t *testing.T) {},
-			vaultTokenInFile.Name(),
+			vaultTokenFile.Name(),
 			[]string{},
 			&htgettokenClient{
-				vaultServer:      vaultServer,
-				vaultTokenInFile: vaultTokenInFile.Name(),
-				outFile:          outFile,
-				options:          []string{},
+				vaultServer:    vaultServer,
+				vaultTokenFile: vaultTokenFile.Name(),
+				outFile:        outFile,
+				options:        []string{},
 			},
 			nil,
 		},
 		{
 			"Default client with options",
 			func(t *testing.T) {},
-			vaultTokenInFile.Name(),
+			vaultTokenFile.Name(),
 			[]string{"--option1", "value1", "--option2", "--option3", "value3"},
 			&htgettokenClient{
-				vaultServer:      vaultServer,
-				vaultTokenInFile: vaultTokenInFile.Name(),
-				outFile:          outFile,
-				options:          []string{"--option1", "value1", "--option2", "--option3", "value3"},
+				vaultServer:    vaultServer,
+				vaultTokenFile: vaultTokenFile.Name(),
+				outFile:        outFile,
+				options:        []string{"--option1", "value1", "--option2", "--option3", "value3"},
 			},
 			nil,
 		},
@@ -86,7 +86,7 @@ func TestNewHtgettokenClient(t *testing.T) {
 				var client *htgettokenClient
 				out := string(captureOutput(
 					func() {
-						client = newHtgettokenClient(vaultServer, test.vaultTokenInFile, outFile, test.options...)
+						client = newHtgettokenClient(vaultServer, test.vaultTokenFile, outFile, test.options...)
 					},
 				))
 				assert.Equal(t, test.expected, client)

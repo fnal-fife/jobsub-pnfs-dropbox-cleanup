@@ -229,6 +229,7 @@ func setupIDTOKENEnvironment() (cleanupFunc func()) {
 // sciTokenAuth checks if the standard location for a scitoken has a valid scitoken. If so, it will
 // set the environment variable BEARER_TOKEN_FILE to that path
 func sciTokenAuth(ctx context.Context, c *condorSchedd) error {
+	// TODO we need to test this file
 	if !checkForClientAuthMethod(ctx, SCITOKENS) {
 		msg := fmt.Sprintf("%s authentication method not supported by condor client", SCITOKENS.String())
 		slog.Error(msg)

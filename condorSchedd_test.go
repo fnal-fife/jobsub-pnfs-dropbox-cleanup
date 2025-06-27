@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/retzkek/htcondor-go/classad"
@@ -93,9 +97,6 @@ func TestBuildConstraint(t *testing.T) {
 	}
 }
 
-// TODO Use Testcontainers for this?
-func TestGetCondorSchedds(t *testing.T) {}
-
 func TestSetupIDTOKENEnvironment(t *testing.T) {
 	type testCase struct {
 		description  string
@@ -149,5 +150,93 @@ func TestSetupIDTOKENEnvironment(t *testing.T) {
 			},
 		)
 	}
+}
 
+// Assumes condor_config_val is available in the PATH
+func TestIdTokenAuth(t *testing.T) {
+	ctx := context.Background()
+	c := &condorSchedd{name: "test_schedd"}
+
+	type testCase struct {
+		description string
+		setup       func(t *testing.T)
+		expectedErr error
+	}
+
+	testCases := []testCase{
+		{
+			"IDTOKENS not set as auth method",
+			func(t *testing.T) {
+				t.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "SOME_OTHER_METHOD")
+			},
+			errUnsupportedCondorAuthMethod,
+		},
+		{
+			"IDTOKENS set as auth method, directory doesn't exist",
+			func(t *testing.T) {
+				t.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "IDTOKENS")
+
+				// Simulate a home dir
+				homedir := t.TempDir()
+				t.Setenv("HOME", homedir)
+
+			},
+			fs.ErrNotExist,
+		},
+		{
+			"IDTOKENS set as auth method, directory not readable",
+			func(t *testing.T) {
+				t.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "IDTOKENS")
+
+				// Simulate a home dir
+				homedir := t.TempDir()
+				os.MkdirAll(filepath.Join(homedir, ".condor", "tokens.d"), 0o000) // No permissions
+				t.Setenv("HOME", homedir)
+
+			},
+			fs.ErrPermission,
+		},
+		{
+			"IDTOKENS set as auth method, directory readable, only dirs inside",
+			func(t *testing.T) {
+				t.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "IDTOKENS")
+
+				// Simulate a home dir
+				homedir := t.TempDir()
+				os.MkdirAll(filepath.Join(homedir, ".condor", "tokens.d", "dir"), 0o755)
+				t.Setenv("HOME", homedir)
+
+			},
+			errNoIDTokensFound,
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(
+			test.description,
+			func(t *testing.T) {
+				test.setup(t)
+
+				err := idTokenAuth(ctx, c)
+				if !errors.Is(err, test.expectedErr) {
+					t.Errorf("Expected error '%v', got '%v'", test.expectedErr, err)
+				}
+			},
+		)
+	}
+
+}
+
+func TestGetDropboxFilesFromJob(t *testing.T) {
+	t.Skip("getDropboxFilesFromJob test not implemented yet")
+}
+
+// Tests to implement in the future
+// TODO Use Testcontainers for this?
+func TestGetCondorSchedds(t *testing.T) {
+	t.Skip("getCondorSchedds test not implemented yet")
+}
+
+func TestGetPNFSJobsForExperiment(t *testing.T) {
+	t.Skip("getPNFSJobsForExperiment test not implemented yet")
 }

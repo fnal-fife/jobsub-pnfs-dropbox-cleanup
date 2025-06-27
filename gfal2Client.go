@@ -225,6 +225,10 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 }
 
 func (g *gfal2Client) fileListingToFileEntry(line string, filenameTransformFunc func(string) string) (*FileEntry, error) {
+	// File entries will look like this:
+	// -rwxrwxrwx   0 0     0            50 Sep 26 14:55 bogus_file.out
+	// Dir output:
+	// drwxrwxrwx   0 0     0             0 Apr  6  2023 bogus_dir
 	var err error
 	lineParts := lineRegex.FindStringSubmatch(line)
 	if lineParts == nil {

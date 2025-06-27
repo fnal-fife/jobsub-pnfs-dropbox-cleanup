@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // TODO
@@ -95,14 +97,9 @@ func TestGetConfigFilePath(t *testing.T) {
 			defer tc.cleanupFunc()
 
 			path, err := getConfigFilePath(tc.configFileFlag, tc.checkDirs)
-			if err != tc.expectedErr {
-				t.Errorf("Expected error %v, got %v", tc.expectedErr, err)
-			}
-			if path != tc.expectedPath {
-				t.Errorf("Expected path %s, got %s", tc.expectedPath, path)
-			}
-		},
-		)
+			assert.ErrorIs(t, err, tc.expectedErr)
+			assert.Equal(t, tc.expectedPath, path)
+		})
 	}
 
 }

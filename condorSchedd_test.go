@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -137,18 +136,12 @@ func TestSetupIDTOKENEnvironment(t *testing.T) {
 
 				// Check if the environment variable is set correctly
 				value, ok := os.LookupEnv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
-				if !ok {
-					t.Errorf("Environment variable _condor_SEC_CLIENT_AUTHENTICATION_METHODS should be set")
-				}
-				// Assert that the environment variable is set to "IDTOKENS"
-				if value != "IDTOKENS" {
-					t.Errorf("Expected _condor_SEC_CLIENT_AUTHENTICATION_METHODS to be 'IDTOKENS', got '%s'", value)
-				}
+				assert.True(t, ok, "_condor_SEC_CLIENT_AUTHENTICATION_METHODS should be set")
+				assert.Equal(t, "IDTOKENS", value, "_condor_SEC_CLIENT_AUTHENTICATION_METHODS should be set to 'IDTOKENS'")
+
 				// Call the cleanup function
 				cleanup()
-				if !test.cleanupCheck() {
-					t.Errorf("Cleanup function did not restore the environment correctly")
-				}
+				assert.True(t, test.cleanupCheck(), "Cleanup function should restore the environment correctly")
 			},
 		)
 	}
@@ -218,30 +211,13 @@ func TestIdTokenAuth(t *testing.T) {
 			test.description,
 			func(t *testing.T) {
 				test.setup(t)
-
-				err := idTokenAuth(ctx, c)
-				if !errors.Is(err, test.expectedErr) {
-					t.Errorf("Expected error '%v', got '%v'", test.expectedErr, err)
-				}
+				assert.ErrorIs(t, idTokenAuth(ctx, c), test.expectedErr)
 			},
 		)
 	}
 
 }
 
-func TestGetDropboxFilesFromJob(t *testing.T) {
-	t.Skip("getDropboxFilesFromJob test not implemented yet")
-}
-
-// Tests to implement in the future
-// TODO Use Testcontainers for this?
-func TestGetCondorSchedds(t *testing.T) {
-	t.Skip("getCondorSchedds test not implemented yet")
-}
-
-func TestGetPNFSJobsForExperiment(t *testing.T) {
-	t.Skip("getPNFSJobsForExperiment test not implemented yet")
-}
 func TestCheckForClientAuthMethod(t *testing.T) {
 	// Save and restore exeMap after test
 	origExeMap := make(map[string]string)
@@ -321,4 +297,14 @@ func TestCheckForClientAuthMethod(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// Tests to implement in the future
+// TODO Use Testcontainers for this?
+func TestGetCondorSchedds(t *testing.T) {
+	t.Skip("getCondorSchedds test not implemented yet")
+}
+
+func TestGetPNFSJobsForExperiment(t *testing.T) {
+	t.Skip("getPNFSJobsForExperiment test not implemented yet")
 }

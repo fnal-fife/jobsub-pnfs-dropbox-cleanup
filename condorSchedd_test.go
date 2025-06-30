@@ -232,10 +232,10 @@ func TestCheckForClientAuthMethod(t *testing.T) {
 	fakeCondorConfigVal := filepath.Join(tmpDir, "condor_config_val")
 
 	// Helper to write a fake condor_config_val script that we'll feed test values into
-	writeFakeCondorConfigVal := func(output string, exitCode int) {
+	writeFakeCondorConfigVal := func(expectedOut string, exitCode int) {
 		script := "#!/bin/sh\n"
-		if output != "" {
-			script += "echo \"" + output + "\"\n"
+		if expectedOut != "" {
+			script += "echo \"" + expectedOut + "\"\n"
 		}
 		script += fmt.Sprintf("exit %d\n", exitCode)
 		if err := os.WriteFile(fakeCondorConfigVal, []byte(script), 0o755); err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"math"
 	"os"
@@ -12,15 +13,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki-client-go/loki"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/posflag"
 	"github.com/knadh/koanf/v2"
+	slogloki "github.com/samber/slog-loki/v3"
+	slogmulti "github.com/samber/slog-multi"
 	flag "github.com/spf13/pflag"
 )
 
-var now = time.Now()
-var exeMap = map[string]string{} // Map of all the executables we will need to find in PATH
+var (
+	now    = time.Now()
+	exeMap = map[string]string{} // Map of all the executables we will need to find in PATH
+	// Config
+	k      = koanf.New(".") // Config path delimiter is "."
+	logger *slog.Logger     // Global logger instance
+)
 
 // Defaults
 var (
@@ -41,9 +50,6 @@ var (
 	defaultVaultTokenAgeCutoff = time.Duration(7 * 24 * time.Hour) // 7 days
 	defaultCondorAuthMethod    = "IDTOKENS"                        // Default condor authentication method
 )
-
-// Config
-var k = koanf.New(".") // Config path delimiter is "."
 
 func main() {
 	// Read flags
@@ -78,16 +84,38 @@ func main() {
 	}
 
 	// Set up logging
+	// TODO Configure this
+	logLevel := slog.LevelInfo
 	if k.Bool("debug") {
-		slog.SetLogLoggerLevel(slog.LevelDebug)
-		slog.Debug("Debug logging enabled")
+		logLevel = slog.LevelDebug
 	}
-	slog.Info("Initialized logging")
+
+	// Set up fanout logger that logs to stdout and loki
+	lokiConfig, _ := loki.NewDefaultConfig("http://fifelog.fnal.gov:3100/loki/api/v1/push")
+	lokiClient, _ := loki.New(lokiConfig)
+	// We don't need to wrap this in a sync.Once to handle the error condition when run() is called below, because Stop()
+	// already has its own sync.Once.  Thus, we can safely call or defer the call to Stop() as many times as we want
+	defer lokiClient.Stop() // Stop the Loki client to send logs
+
+	logger := slog.New(slogmulti.Fanout(
+		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: logLevel,
+		}),
+		slogloki.Option{Level: logLevel, Client: lokiClient}.NewLokiHandler()),
+	)
+	logger = logger.With("environment", "dev").With("service_name", "jobsub-pnfs-dropbox-cleanup") // TODO configure the environment tag
+
+	if k.Bool("debug") {
+		logger.Debug("Debug logging enabled")
+	}
+	logger.Info("Initialized logging")
+
+	// END TODO
 
 	// Set up our context with timeout
 	timeout, err := time.ParseDuration(k.String("timeout"))
 	if err != nil {
-		slog.Error("error getting timeout from config. Using default timeout", "error", err, "defaultTimeout", defaultTimeout)
+		logger.Error("error getting timeout from config. Using default timeout", "error", err, "defaultTimeout", defaultTimeout)
 		timeout = defaultTimeout
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -95,26 +123,35 @@ func main() {
 
 	err = run(ctx, k)
 	if err != nil {
+		var exitCode int
 		switch {
 		case errors.Is(err, errUsage):
 			f.Usage()
-			os.Exit(1)
+			exitCode = 1
+		case errors.Is(err, fs.ErrNotExist):
+			logger.Error(err.Error(), "vaultTokenFile", k.String("vault.vaultTokenFile"))
+			exitCode = 2
 		case errors.Is(err, errVaultTokenTooOld):
-			slog.Error(err.Error(), "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", k.String("vault.vaultTokenAgeCutoff"))
-			os.Exit(2)
+			logger.Error(err.Error(), "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", k.String("vault.vaultTokenAgeCutoff"))
+			exitCode = 2
 		case errors.Is(err, errNoFilesInDropbox):
-			slog.Info("No files found in dropbox. Nothing to delete.")
-			os.Exit(0)
+			logger.Info("No files found in dropbox. Nothing to delete.")
+			exitCode = 0
 		case errors.Is(err, errNoSchedds):
-			slog.Error("No condor schedds found. Please check your condor pool configuration.")
-			os.Exit(3)
+			logger.Error("No condor schedds found. Please check your condor pool configuration.")
+			exitCode = 3
 		case errors.Is(err, errScheddQueryFailed):
-			slog.Error("No condor schedds were queried successfully. Please check your condor pool configuration or this script's configuration")
-			os.Exit(4)
+			logger.Error("No condor schedds were queried successfully. Please check your condor pool configuration or this script's configuration")
+			exitCode = 4
 		case errors.Is(err, errNoFilesToDelete):
-			slog.Info("No files to delete. Exiting")
-			os.Exit(0)
+			logger.Info("No files to delete. Exiting")
+			exitCode = 0
+		default:
+			logger.Error("An unexpected error occurred", "error", err)
+			exitCode = 1
 		}
+		lokiClient.Stop() // Stop the Loki client before exiting to send logs
+		os.Exit(exitCode)
 	}
 }
 
@@ -138,11 +175,13 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	slog.Debug("Ensuring vault token is available, and new enough", "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", vaultTokenAgeCutoff)
 	stat, err := os.Stat(k.String("vault.vaultTokenFile"))
 	if err != nil {
-		slog.Error("error getting file information about vault token file. Exiting", "error", err)
+		slog.Error("could not check vault token file: could not get file information")
+		if errors.Is(err, fs.ErrNotExist) {
+			return errNoVaultTokenFile
+		}
 		return err
 	}
 	if stat.ModTime().Add(vaultTokenAgeCutoff).Before(now) { // File is older than vaultTokenAgeCutoff
-		slog.Error("vault token file is older than the time cutoff. Exiting", "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", vaultTokenAgeCutoff)
 		return errVaultTokenTooOld
 	}
 	slog.Debug("Vault token file exists and is new enough", "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", vaultTokenAgeCutoff)
@@ -434,6 +473,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 var (
 	errUsage             = errors.New("command malformed")
+	errNoVaultTokenFile  = fmt.Errorf("could not find vault token file at configured location: %w", fs.ErrNotExist)
 	errVaultTokenTooOld  = errors.New("vault token file is older than the time cutoff")
 	errNoFilesInDropbox  = errors.New("no files found in dropbox")
 	errNoSchedds         = errors.New("no condor schedds found")

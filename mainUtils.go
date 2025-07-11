@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -58,6 +59,35 @@ func checkVaultTokenFile(location, ageCutoff string) error {
 		return errVaultTokenTooOld
 	}
 	return nil
+}
+func getScheddFiles(ctx context.Context, sch *condorSchedd, authMethod condorAuthMethod, experiment string) ([]string, error) {
+	funcLogger := logger.With("caller", "getScheddFiles")
+	scheddFiles := make([]string, 0)
+	sch.cmdEnv = os.Environ()
+
+	funcLogger.Debug("Verifying authorization to condor schedd", "schedd", sch.name, "authMethod", authMethod)
+	err := sch.verify(ctx, authMethod)
+	if err != nil {
+		return nil, fmt.Errorf("error verifying authorization to condor schedd: %w", err)
+	}
+
+	funcLogger.Debug("Getting PNFS jobs for experiment", "experiment", experiment, "schedd", sch.name)
+	ads, err := sch.getPNFSJobsForExperiment(ctx, k.String("experiment"), k.String("condor.jobConstraint"))
+	if err != nil {
+		return nil, fmt.Errorf("error getting PNFS jobs for experiment %s: %w", experiment, err)
+	}
+
+	for _, ad := range ads {
+		files, err := sch.getDropboxFilesFromJob(ad)
+		if err != nil {
+			funcLogger.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name, "jobId", fmt.Sprintf("%s.%s", ad["ClusterId"], ad["ProcId"])) // TODO Get job ID?
+			continue
+		}
+		funcLogger.Debug("Got schedd dropbox files", "schedd", sch.name, "files", files)
+		scheddFiles = append(scheddFiles, files...)
+	}
+
+	return scheddFiles, nil
 }
 
 func stripPNFSFromPath(pnfsPath string) string {

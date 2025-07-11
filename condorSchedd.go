@@ -57,18 +57,18 @@ func init() {
 }
 
 func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSchedd, error) {
+	funcLogger := logger.With("caller", "getCondorSchedds")
 	cmd := condor.NewCommand(exeMap["condor_status"]).WithPool(pool).WithConstraint(constraint).WithArg("-schedd")
-	slog.Debug("Running command", "command", append([]string{cmd.Command}, cmd.MakeArgs()...))
+	funcLogger.Debug("Running command", "command", append([]string{cmd.Command}, cmd.MakeArgs()...))
 	ads, err := cmd.RunWithContext(ctx)
 	if err != nil {
-		slog.Error("error querying condor collector for schedds", "error", err)
-		return nil, err
+		return nil, fmt.Errorf("error querying condor collector for schedds: %w", err)
 	}
 	schedds := make([]*condorSchedd, 0, len(ads))
 	for _, ad := range ads {
 		name, ok := ad["Name"]
 		if !ok {
-			slog.Error("Name not found in schedd ad", "ad", ad)
+			funcLogger.Error("Name not found in schedd ad", "ad", ad)
 			continue
 		}
 		schedd := &condorSchedd{
@@ -90,23 +90,21 @@ func (c *condorSchedd) verify(ctx context.Context, a condorAuthMethod) error {
 }
 
 func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string, constraint string) ([]classad.ClassAd, error) {
+	funcLogger := logger.With("caller", "getPNFSJobsForExperiment")
 	useConstraint := buildConstraint(experiment, constraint)
-	slog.Debug("Final job constraint", "constraint", useConstraint)
+	funcLogger.Debug("Final job constraint", "constraint", useConstraint)
 
 	condorCmd := condor.NewCommand(exeMap["condor_q"]).WithName(c.name).WithConstraint(useConstraint)
-	slog.Debug("Running command", "command", append([]string{condorCmd.Command}, condorCmd.MakeArgs()...))
+	funcLogger.Debug("Running command", "command", append([]string{condorCmd.Command}, condorCmd.MakeArgs()...))
 	cmd := condorCmd.CmdContext(ctx)
 	cmd.Env = append(os.Environ(), c.cmdEnv...)
 	out, err := cmd.Output()
 	if err != nil {
 		// Handle Error
-		msg := "error querying condorSchedd for PNFS-using jobs"
-		slog.Error(msg, "error", err)
-		return nil, fmt.Errorf("%s: %w", msg, err)
+		return nil, fmt.Errorf("error querying condorSchedd for PNFS-using jobs: %w", err)
 	}
 	ads, err := classad.ReadClassAds(bytes.NewReader(out))
 	if err != nil {
-		slog.Error("error reading classads from condor_q output", "error", err)
 		return nil, fmt.Errorf("error reading classads: %w", err)
 	}
 
@@ -203,6 +201,7 @@ func (a condorAuthMethod) setupEnv() (cleanupFunc func()) {
 
 // Set environment so we can use IDTOKENS for authentication.  Returns a function to restore the old environment after execution
 func setupIDTOKENEnvironment() (cleanupFunc func()) {
+	funcLogger := logger.With("caller", "setupIDTOKENEnvironment")
 	var oldSECClientAuthenticationMethods string
 	val, ok := os.LookupEnv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
 	if ok {
@@ -211,43 +210,42 @@ func setupIDTOKENEnvironment() (cleanupFunc func()) {
 
 	err := os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "IDTOKENS")
 	if err != nil {
-		slog.Error("error setting environment variable for condor authentication methods", "error", err)
+		funcLogger.Error("error setting environment variable for condor authentication methods", "error", err)
 		return func() {}
 	}
 
 	return func() {
 		if oldSECClientAuthenticationMethods != "" {
 			os.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", oldSECClientAuthenticationMethods)
-			slog.Debug("Restored old _condor_SEC_CLIENT_AUTHENTICATION_METHODS env var", "methods", oldSECClientAuthenticationMethods)
+			funcLogger.Debug("Restored old _condor_SEC_CLIENT_AUTHENTICATION_METHODS env var", "methods", oldSECClientAuthenticationMethods)
 			return
 		}
 		os.Unsetenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS")
-		slog.Debug("Unset _condor_SEC_CLIENT_AUTHENTICATION_METHODS environment variable")
+		funcLogger.Debug("Unset _condor_SEC_CLIENT_AUTHENTICATION_METHODS environment variable")
 	}
 }
 
 // sciTokenAuth checks if the standard location for a scitoken has a valid scitoken. If so, it will
 // set the environment variable BEARER_TOKEN_FILE to that path
 func sciTokenAuth(ctx context.Context, c *condorSchedd) error {
-	// TODO we need to test this file
+	funcLogger := logger.With("caller", "sciTokenAuth")
 	if !checkForClientAuthMethod(ctx, SCITOKENS) {
-		msg := fmt.Sprintf("%s authentication method not supported by condor client", SCITOKENS.String())
-		slog.Error(msg)
-		return errors.New(msg)
+		return errUnsupportedCondorAuthMethod
 	}
 
 	// TODO next version implement bearer token discovery, or use it from scitokens-go
 	// Check for scitoken in the standard location
 	user, err := user.Current()
 	if err != nil {
-		slog.Error("error getting current user", "error", err)
-		return err
+		return fmt.Errorf("error getting current user: %w", err)
 	}
+
 	tokenFile := path.Join("/", "run", "user", user.Uid, "bt_u"+user.Uid)
+	funcLogger.Debug("Checking for scitoken file", "tokenFile", tokenFile)
 	cmd := exec.CommandContext(ctx, exeMap["httokendecode"], tokenFile)
 	if err := cmd.Run(); err != nil {
-		slog.Error("error running httokendecode", "error", err, "command", cmd.String())
-		return err
+		funcLogger.Error("error running httokendecode", "error", err, "command", cmd.String())
+		return fmt.Errorf("error checking scitoken file: %w", err)
 	}
 	c.cmdEnv = append(c.cmdEnv, "BEARER_TOKEN_FILE="+tokenFile)
 	return nil
@@ -260,45 +258,45 @@ func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 	// TODO Can this be done with the condor library?  Not yet
 	// checkCmd := condor.NewCommand("/usr/bin/condor_config_val").WithArg("SEC_CLIENT_AUTHENTICATION_METHODS")
 	// slog.Debug("Running command", "command", append([]string{checkCmd.Command}, checkCmd.MakeArgs()...))
+	funcLogger := logger.With("caller", "idTokenAuth")
 	authMethod := IDTOKENS
 	if !checkForClientAuthMethod(ctx, authMethod) {
-		msg := fmt.Sprintf("%s authentication method not supported by condor client", authMethod.String())
-		slog.Error(msg)
 		return errUnsupportedCondorAuthMethod
 	}
 
 	// Does at least one IDTOKEN file exist in the expected location?
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		slog.Error("error getting current user's home dir", "error", err)
-		return err
+		return fmt.Errorf("error getting current user's home dir: %w", err)
 	}
+
+	funcLogger.Debug("Checking for IDTOKEN files in expected location ~/.condor/tokens.d")
 	expectedPath := filepath.Join(homeDir, ".condor", "tokens.d")
 	files, err := os.ReadDir(expectedPath)
 	if err != nil {
+		msg := "Could not find IDTOKEN in expected location"
 		if errors.Is(err, fs.ErrNotExist) {
-			slog.Error("IDTOKEN directory does not exist - should be at ~/.condor/tokens.d", "directory", expectedPath)
-			return err
+			funcLogger.Error("IDTOKEN directory does not exist - should be at ~/.condor/tokens.d", "directory", expectedPath)
+			return fmt.Errorf("%s: %w", msg, err)
 		}
-		slog.Error("error reading IDTOKEN directory", "error", err)
-		return err
+		funcLogger.Error("error reading IDTOKEN directory", "error", err)
+		return fmt.Errorf("%s: %w", msg, err)
 	}
 
 	foundNonDirFile := false
 	for _, file := range files {
 		_, err := os.Stat(filepath.Join(expectedPath, file.Name()))
 		if err != nil {
-			slog.Error("error getting file information about IDTOKEN file", "error", err)
-			return err
+			funcLogger.Error("error getting file information about IDTOKEN file", "error", err)
+			continue
 		}
 		if !file.IsDir() {
-			slog.Debug("Verified that tokens directory is non-empty. Proceeding with IDTOKEN auth")
+			funcLogger.Debug("Verified that tokens directory is non-empty. Proceeding with IDTOKEN auth")
 			foundNonDirFile = true
 			break
 		}
 	}
 	if !foundNonDirFile {
-		slog.Error("No IDTOKEN files found in expected location")
 		return errNoIDTokensFound
 	}
 
@@ -307,26 +305,27 @@ func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 }
 
 func checkForClientAuthMethod(ctx context.Context, m condorAuthMethod) bool {
+	funcLogger := logger.With("caller", "checkForClientAuthMethod")
 	checkCmd := exec.CommandContext(ctx, exeMap["condor_config_val"], "SEC_CLIENT_AUTHENTICATION_METHODS")
-	slog.Debug("Running command", "command", checkCmd.String())
+	funcLogger.Debug("Running command", "command", checkCmd.String())
 	stdoutStderr, err := checkCmd.CombinedOutput()
 	if err != nil {
-		slog.Error("error getting condor config value", "error", err)
+		funcLogger.Error("error getting condor config value", "error", err)
 		return false
 	}
 	if len(stdoutStderr) == 0 {
-		slog.Error("no condor config value returned")
+		funcLogger.Error("no condor config value returned")
 		return false
 	}
 	methods := strings.Split(string(stdoutStderr), ",")
 	for _, ad := range methods {
 		if strings.TrimSpace(ad) == m.String() {
-			slog.Debug("Requested method found in supported auth methods", "method", m.String())
+			funcLogger.Debug("Requested method found in supported auth methods", "method", m.String())
 			return true
 		}
 	}
 	msg := fmt.Sprintf("%s is not a supported authentication method", m.String())
-	slog.Error(msg)
+	funcLogger.Error(msg)
 	return false
 }
 

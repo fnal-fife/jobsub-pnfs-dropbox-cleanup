@@ -92,25 +92,29 @@ func newGfal2Client(fileCountLimit int, retryCount uint, retrySleep time.Duratio
 	return c
 }
 
+// getFilesList retrieves a list of files and directories from the specified source path using the `gfal-ls` command.
+// It supports recursive traversal of directories, respects a file count limit, and handles context cancellation and retries.
+// It returns a slice of FileEntry objects representing the files and directories found, or an error if any occurred.
+// A nil error or errProcessingFiles indicates that at least some entries were successfully processed, and the returned
+// slice of FileEntry objects can be used if the caller wishes
+//
 // TODO: Can this be implemented using a fs.WalkDirFunc?
-// Recursive
 func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry) ([]*FileEntry, error) {
+	funcLogger := logger.With("caller", "gfal2Client.getFilesList")
 	if err := ctx.Err(); err != nil {
 		msg := "context deadline exceeded before getting files list"
 		if errors.Is(err, context.Canceled) {
 			msg = "context canceled before getting files list"
-			slog.Error(msg, "error", err)
+			funcLogger.Error(msg, "error", err)
 			return nil, fmt.Errorf("%s: %w", msg, err)
 		}
-		slog.Error(msg, "error", err)
+		funcLogger.Error(msg, "error", err)
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
 	// Setup environment
 	environ := os.Environ()
 	environ = append(environ, g.addedEnvironment...)
-
-	// environ := append(os.Environ(), "BEARER_TOKEN=)
 
 	// Run command
 	cmdArgs := []string{"-l", source}
@@ -122,7 +126,7 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 		c := exec.CommandContext(ctx, "gfal-ls", cmdArgs...)
 		c.Env = environ
 
-		slog.Debug("Running command", "command", c.String(), "try", i+1, "maxRetries", g.retryCount)
+		funcLogger.Debug("Running command", "command", c.String(), "try", i+1, "maxRetries", g.retryCount)
 		stdoutStderr, err = c.CombinedOutput()
 		if err != nil {
 			msg := "error running gfal-ls command"
@@ -132,8 +136,8 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 				time.Sleep(g.retrySleep) // Sleep before retrying
 				continue
 			}
-			slog.Error("Max retries exceeded for command", "command", c.String(), "error", err)
-			return nil, fmt.Errorf("%s: %w", msg, err)
+			funcLogger.Error("Max retries exceeded for command", "command", c.String(), "error", err)
+			return nil, fmt.Errorf("error getting files list: %w", err)
 		}
 		break
 	}
@@ -145,12 +149,12 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 
 	sourceURL, err := url.Parse(source)
 	if err != nil {
-		slog.Error("error parsing source URL", "source", source, "error", err)
+		funcLogger.Error("error parsing source URL", "source", source, "error", err)
 		return nil, fmt.Errorf("error parsing source URL: %w", err)
 	}
 
 	for scanner.Scan() {
-		slog.Debug("File count left", "remaining", g.fileCountLeft.Load())
+		funcLogger.Debug("File count left", "remaining", g.fileCountLeft.Load())
 		if g.fileCountLeft.Load() == 0 {
 			return dirContents, errFileCountLimitExceeded
 		}
@@ -162,12 +166,12 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 		})
 		if errors.Is(err, errFileCountLimitExceeded) {
 			// We exceeded our file count limit, so we should stop
-			slog.Debug("File count limit exceeded, stopping")
+			funcLogger.Debug("File count limit exceeded, stopping")
 			return dirContents, err
 		}
 		if err != nil {
 			// Handle error: print that there's an issue
-			slog.Error("error parsing line", "error", err)
+			funcLogger.Error("error parsing line", "error", err)
 			errs = append(errs, err)
 			continue
 		}
@@ -181,7 +185,7 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 			files, err := g.getFilesList(ctx, newSource, nil, entry)
 			if err != nil {
 				// Skip the directory
-				slog.Error("error getting files in directory. Moving to next entry", "directory", entry.filename, "error", err)
+				funcLogger.Error("error getting files in directory. Moving to next entry", "directory", entry.filename, "error", err)
 
 				// If we hit the file count limit mid-directory, we want to also reset the g.fileCountLeft counter to
 				// however many spots were open before we started parsing this directory, so g.fileCountLimit - len(dirContents)
@@ -195,7 +199,7 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 					newCounterVal := int32(int(g.fileCountLimit) - len(dirContents))
 					if int(newCounterVal) > defaultLenDirPlusFile {
 						g.fileCountLeft.Store(newCounterVal)
-						slog.Debug(
+						funcLogger.Debug(
 							"File count limit exceeded mid-directory. Resetting file limit counter to pre-current-directory count",
 							"directory", entry.filename, "newCount", g.fileCountLeft.Load())
 					}
@@ -211,14 +215,12 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 	}
 	if scanner.Err() != nil {
 		// Handle error
-		msg := "error scanning output"
-		slog.Error(msg, "error", scanner.Err())
-		return nil, fmt.Errorf("%s: %w", msg, scanner.Err())
+		return nil, fmt.Errorf("error scanning files list query output: %w", scanner.Err())
 	}
 
 	// If we had any errors, we should tell the caller
 	if len(errs) > 0 {
-		return dirContents, fmt.Errorf("errors occurred while processing: %v", errs)
+		return dirContents, &errProcessingFiles{errors: errs}
 	}
 
 	return dirContents, nil
@@ -324,3 +326,16 @@ var (
 	errMalformedPerms         = errors.New("perms string is malformed")
 	errFileCountLimitExceeded = errors.New("file parse limit exceeded")
 )
+
+type errProcessingFiles struct {
+	errors []error
+}
+
+func (e *errProcessingFiles) Error() string {
+	var b strings.Builder
+	for _, err := range e.errors {
+		b.WriteString(err.Error())
+		b.WriteString(", ")
+	}
+	return strings.TrimRight(b.String(), ", ")
+}

@@ -221,9 +221,12 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 	funcLogger.Info("Looking for files to delete in path", "dir", source, "experiment", k.String("experiment"))
 	filesList, err := gClient.getFilesList(ctx, source, nil, nil)
+	var partialSuccessErr *errProcessingFiles
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):
 		funcLogger.Warn("file count limit exceeded. Stopping collecting files now")
+	case errors.As(err, &partialSuccessErr):
+		funcLogger.Warn("partial success occurred while collecting files", "errors", err)
 	case err != nil:
 		return fmt.Errorf("error getting dropbox files list: %w", err)
 	}

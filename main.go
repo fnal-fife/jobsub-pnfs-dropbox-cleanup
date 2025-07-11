@@ -83,14 +83,13 @@ func main() {
 	}
 
 	// Set up logging
-	// TODO Configure this
 	logLevel := slog.LevelInfo
 	if k.Bool("debug") {
 		logLevel = slog.LevelDebug
 	}
 
 	// Set up fanout logger that logs to stdout and loki
-	lokiConfig, _ := loki.NewDefaultConfig(***REMOVED***)
+	lokiConfig, _ := loki.NewDefaultConfig(k.String("loki.url"))
 	lokiClient, _ := loki.New(lokiConfig)
 	// We don't need to wrap this in a sync.Once to handle the error condition when run() is called below, because Stop()
 	// already has its own sync.Once.  Thus, we can safely call or defer the call to Stop() as many times as we want
@@ -102,15 +101,15 @@ func main() {
 		}),
 		slogloki.Option{Level: logLevel, Client: lokiClient}.NewLokiHandler()),
 	)
-	logger = logger.With("environment", "dev").With("service_name", "jobsub-pnfs-dropbox-cleanup").With("caller", "main") // TODO configure the environment tag
+	logger = logger.
+		With("environment", k.String("loki.environment")).
+		With("service", k.String("loki.service"))
 	funcLogger := logger.With("caller", "main.main")
 
 	if k.Bool("debug") {
 		funcLogger.Debug("Debug logging enabled")
 	}
 	funcLogger.Info("Initialized logging")
-
-	// END TODO
 
 	// Set up our context with timeout
 	timeout, err := time.ParseDuration(k.String("timeout"))

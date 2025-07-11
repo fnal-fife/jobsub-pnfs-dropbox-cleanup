@@ -33,3 +33,8 @@ vault:
   # defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
   vaultTokenAgeCutoff: "168h" # 7 days
   minVaultTokenTimeLeft: "72h" # 3 days
+
+loki:
+  url: ***REMOVED***
+  environment: "dev"
+  service: "jobsub-pnfs-dropbox-cleanup"

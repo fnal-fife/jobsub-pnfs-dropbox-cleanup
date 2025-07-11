@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +14,13 @@ import (
 // * Test that checks *condorSchedd.queryJobsList
 // * Test that checks *gfalList.getFilesList
 // * Test that checks *gfalList.fileListingToFileEntry
+
+func TestMain(m *testing.M) {
+	// Setup code here if needed
+	logger = slog.New(slog.NewTextHandler(os.Stdout, nil)) // Dummy logger for tests
+	exitCode := m.Run()
+	os.Exit(exitCode)
+}
 
 func TestGetConfigFilePath(t *testing.T) {
 	// expectedPath := "/etc/jobsub-pnfs-dropbox-cleanup/jobsub-pnfs-dropbox-cleanup.yml"

@@ -124,27 +124,27 @@ func main() {
 	err = run(ctx, k)
 	if err != nil {
 		var exitCode int
+		errMsg := "error running dropbox cleanup: "
 		switch {
+		// All the OK cases: exit 0
+		case errors.Is(err, errNoFilesInDropbox), errors.Is(err, errNoFilesToDelete):
+			funcLogger.Info(err.Error())
+			exitCode = 0
+		// Other cases
 		case errors.Is(err, errUsage):
 			f.Usage()
 			exitCode = 1
-		case errors.Is(err, errNoVaultTokenFile) || errors.Is(err, errVaultTokenTooOld):
+		case errors.Is(err, errNoVaultTokenFile), errors.Is(err, errVaultTokenTooOld):
 			funcLogger.Error(err.Error(), "vaultTokenFile", k.String("vault.vaultTokenFile"))
 			exitCode = 2
-		case errors.Is(err, errNoFilesInDropbox):
-			funcLogger.Info("No files found in dropbox. Nothing to delete.")
-			exitCode = 0
 		case errors.Is(err, errNoSchedds):
-			funcLogger.Error("No condor schedds found. Please check your condor pool configuration.")
+			funcLogger.Error(errMsg + "No condor schedds found. Please check your condor pool configuration.")
 			exitCode = 3
 		case errors.Is(err, errScheddQueryFailed):
-			funcLogger.Error("No condor schedds were queried successfully. Please check your condor pool configuration or this script's configuration")
+			funcLogger.Error(errMsg + "No condor schedds were queried successfully. Please check your condor pool configuration or this script's configuration")
 			exitCode = 4
-		case errors.Is(err, errNoFilesToDelete):
-			funcLogger.Info("No files to delete. Exiting")
-			exitCode = 0
 		default:
-			funcLogger.Error("An unexpected error occurred", "error", err)
+			funcLogger.Error(errMsg + err.Error())
 			exitCode = 1
 		}
 		lokiClient.Stop() // Stop the Loki client before exiting to send logs
@@ -153,30 +153,32 @@ func main() {
 }
 
 func run(ctx context.Context, k *koanf.Koanf) error {
-	runLogger := logger.With("caller", "main.run")
+	funcLogger := logger.With("caller", "main.run")
 	// 0. Checks and setup
 	// 0a. Check for --e/--experiment flag
 	s := k.String("experiment")
 	if s == "" {
-		runLogger.Error("Experiment flag is required")
+		funcLogger.Error("Experiment flag is required")
 		return errUsage
 	}
 
 	// 0b. Check Vault Token
+	funcLogger.Debug("Checking vault token file", "vaultTokenFile", k.String("vault.vaultTokenFile"))
 	if err := checkVaultTokenFile(k.String("vault.vaultTokenFile"), k.String("vault.vaultTokenAgeCutoff")); err != nil {
 		return fmt.Errorf("error checking vault token file: %w", err)
 	}
-	runLogger.Debug("Vault token file exists and is new enough", "vaultTokenFile", k.String("vault.vaultTokenFile"))
+	funcLogger.Debug("Vault token file exists and is new enough", "vaultTokenFile", k.String("vault.vaultTokenFile"))
 
-	// 0bb. Make sure that vault token has enough time left before expiration
+	// 0c. Get our BEARER token to obtain files
+	// 0ca. Make sure that vault token has enough time left before expiration. We will pass this value to the htgettokenClient,
+	// which will run this check for us
 	minTimeLeft, err := time.ParseDuration(k.String("vault.minVaultTokenTimeLeft"))
 	if err != nil {
-		runLogger.Error("error parsing minimum vault token time left duration. Using default value", "error", err)
+		funcLogger.Error("error parsing minimum vault token time left duration. Using default value", "error", err)
 		minTimeLeft = defaultVaultTokenTimeLeft
 	}
 
-	// 0c. Get our BEARER token to obtain files
-	runLogger.Debug("Getting BEARER token to get files list from dCache")
+	funcLogger.Debug("Getting BEARER token to get files list from dCache")
 	h := newHtgettokenClient(
 		k.String("vault.server"),
 		k.String("vault.vaultTokenFile"),
@@ -187,13 +189,13 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		h = h.withDebug()
 	}
 	if k.String("vault.authMethod") == "kerberos" {
+		funcLogger.Debug("Using kerberos authentication for htgettokenClient")
 		h = h.withKerberosKeytabAuth(k.String("vault.kerberosKeytabPath"), k.String("vault.kerberosPrincipal"))
 	}
 
 	tok, err := h.getToken(ctx, k.String("vault.experiment"), k.String("vault.role"))
 	if err != nil {
-		runLogger.Error("error getting and validating token", "error", err)
-		return err
+		return fmt.Errorf("error getting and validating token: %w", err)
 	}
 
 	// 1. Get files list from pnfs dropbox
@@ -201,7 +203,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	var retryDuration time.Duration
 	retryDuration, err = time.ParseDuration(k.String("gfal2.retrySleep"))
 	if err != nil {
-		runLogger.Error("error parsing gfal2 retry sleep duration. Will use default", "error", err)
+		funcLogger.Error("error parsing gfal2 retry sleep duration. Will use default", "error", err)
 		retryDuration = 0
 	}
 
@@ -216,19 +218,17 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 	dCacheHostPort := strings.TrimRight(k.String("dCacheHostPort"), "/")
 	source := dCacheHostPort + "/" + exptArea
-	runLogger.Info("Looking for files to delete in path", "dir", source, "experiment", k.String("experiment"))
 
+	funcLogger.Info("Looking for files to delete in path", "dir", source, "experiment", k.String("experiment"))
 	filesList, err := gClient.getFilesList(ctx, source, nil, nil)
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):
-		runLogger.Error("file count limit exceeded. Stopping collecting files now")
+		funcLogger.Warn("file count limit exceeded. Stopping collecting files now")
 	case err != nil:
-		runLogger.Error("error getting files list", "error", err)
-		return err
+		return fmt.Errorf("error getting dropbox files list: %w", err)
 	}
 
 	if len(filesList) == 0 {
-		runLogger.Info("No files found in dropbox")
 		return errNoFilesInDropbox
 	}
 
@@ -236,18 +236,18 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	fileMap := make(fileEntryMap, 0)
 	for _, file := range filesList {
 		fileMap[file.Name()] = file
-		runLogger.Debug("File entry", "file", file.Name())
+		funcLogger.Debug("File entry", "file", file.Name())
 	}
+	funcLogger.Debug("Got dropbox files successfully")
 
 	// 2. Get job files from condor schedds
 	// 2a. Find our schedds
+	funcLogger.Debug("Finding condor cluster schedds")
 	schedds, err := getCondorSchedds(ctx, k.String("condor.pool"), k.String("condor.scheddConstraint"))
 	if err != nil {
-		runLogger.Error("error getting condor schedds:", "error", err)
-		return err
+		return fmt.Errorf("error getting condor schedds: %w", err)
 	}
 	if len(schedds) == 0 {
-		runLogger.Error("no condor schedds found. Exiting")
 		return errNoSchedds
 	}
 
@@ -256,13 +256,13 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		for _, sch := range schedds {
 			scheddNames = append(scheddNames, sch.name)
 		}
-		runLogger.Debug("Got condor schedds", "schedds", scheddNames)
+		funcLogger.Debug("Got condor schedds", "schedds", scheddNames)
 	}
 
 	// 2b. Set up schedd auth
 	authMethod := newCondorAuthMethod(k.String("condor.authMethod"))
 	if authMethod == UNSUPPORTED {
-		runLogger.Warn("Unsupported condor authentication method. Using default", "method", k.String("condor.authMethod"), "default", defaultCondorAuthMethod)
+		funcLogger.Warn("Unsupported condor authentication method. Using default", "method", k.String("condor.authMethod"), "default", defaultCondorAuthMethod)
 		authMethod = newCondorAuthMethod(defaultCondorAuthMethod)
 	}
 
@@ -270,7 +270,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	defer cleanupEnv()
 
 	// 2c. Get the condor job files
-	runLogger.Info("Getting condor job files")
+	funcLogger.Info("Getting condor job files")
 	jobFiles := make(map[string]struct{}, 0)
 
 	// queriedScheddSuccessfully will be true if we successfully queried at least one schedd. If it remains false, we will not delete
@@ -279,40 +279,27 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 	// Now query our schedds for the files in use by condor jobs
 	for _, sch := range schedds {
-		func() {
-			sch.cmdEnv = os.Environ()
-
-			err := sch.verify(ctx, authMethod)
-			if err != nil {
-				runLogger.Error("error verifying authorization to condor schedd:", "error", err, "schedd", sch.name, "authMethod", authMethod.String())
-				return
-			}
-
-			ads, err := sch.getPNFSJobsForExperiment(ctx, k.String("experiment"), k.String("condor.jobConstraint"))
-			if err != nil {
-				runLogger.Error("error getting PNFS jobs:", "error", err, "schedd", sch.name)
-				return
-			}
-			queriedScheddSuccessfully = true
-			for _, ad := range ads {
-				scheddFiles, err := sch.getDropboxFilesFromJob(ad)
-				if err != nil {
-					runLogger.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name) // TODO Get job ID?
-					continue
-				}
-				runLogger.Debug("Got schedd dropbox files", "schedd", sch.name, "files", scheddFiles)
-				for _, file := range scheddFiles {
-					jobFiles[file] = struct{}{}
-				}
-			}
-		}()
+		scheddFiles, err := getScheddFiles(ctx, sch, authMethod, k.String("experiment"))
+		if err != nil {
+			funcLogger.Error("error getting condor job files from schedd", "error", err, "schedd", sch.name)
+			continue
+		}
+		queriedScheddSuccessfully = true
+		for _, file := range scheddFiles {
+			jobFiles[file] = struct{}{}
+		}
 	}
+
 	if !queriedScheddSuccessfully {
-		runLogger.Error("No condor schedds were queried successfully. Exiting")
+		funcLogger.Error("No condor schedds were queried successfully")
 		return errScheddQueryFailed
 	}
 
-	runLogger.Debug("", "jobFiles", jobFiles)
+	if k.Bool("debug") {
+		for file := range jobFiles {
+			funcLogger.Debug("Job file", "file", file)
+		}
+	}
 
 	// 3. Remove any files from our delete list that are in the list of job files or are recent
 	// We are iterating a second time to check if the files are recent, which may not be totally efficient, but it should improve readability
@@ -320,65 +307,60 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	// for recency or job file membership
 	fileAgeCutoff, err := time.ParseDuration(k.String("deleteFilesOlderThan"))
 	if err != nil {
-		runLogger.Error("error parsing configured file age cutoff duration", "error", err)
+		funcLogger.Error("error parsing configured file age cutoff duration", "error", err)
 		return err
 	}
 
-	runLogger.Debug("Are the files not recent or being used by condor jobs?")
+	funcLogger.Debug("Are the files not recent or being used by condor jobs?")
 	for _, entry := range fileMap {
 		func(e *FileEntry) {
 			removeFileAndAncestorsFromDeleteList := func() {
 				delete(fileMap, e.Name())
 				_parent := e.parent
 				for _parent != nil {
-					runLogger.Debug("Removing parent from deletion list", "fileEntry.parent", _parent.Name())
+					funcLogger.Debug("Removing parent from deletion list", "fileEntry.parent", _parent.Name())
 					delete(fileMap, _parent.Name())
 					_parent = _parent.parent
 				}
 			}
-			if _, ok := jobFiles[e.Name()]; ok {
-				runLogger.Debug("File is in job files, so we will not delete it:", "filename", e.Name())
-				removeFileAndAncestorsFromDeleteList()
-				return
-			}
-			if fileIsRecent(e, fileAgeCutoff) {
-				runLogger.Debug("File is recent, so we will not delete it:", "filename", e.Name())
+			if _, ok := jobFiles[e.Name()]; ok || fileIsRecent(e, fileAgeCutoff) {
+				funcLogger.Debug("File is in job files or recent, so we will not delete it:", "filename", e.Name())
 				removeFileAndAncestorsFromDeleteList()
 			}
 		}(entry)
 	}
 
+	// If we have no files left to delete, or if we're in test mode, we can stop here
 	if len(fileMap) == 0 {
-		runLogger.Info("No files to delete. Exiting")
 		return errNoFilesToDelete
 	}
 	if k.Bool("test") {
-		runLogger.Info("Running in test mode. No files will be deleted")
-		runLogger.Info("Would have deleted the following files:")
+		funcLogger.Info("Running in test mode. No files will be deleted")
+		funcLogger.Info("Would have deleted the following files:")
 		for name := range fileMap {
-			runLogger.Info("", "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
+			funcLogger.Info(name, "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
 		}
-		runLogger.Info("Stopping here")
+		funcLogger.Info("Stopping here")
 		return nil
 	}
 
-	runLogger.Debug("Remaining files to delete:")
+	funcLogger.Debug("Remaining files to delete:")
 	for name := range fileMap {
-		runLogger.Debug("", "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
+		funcLogger.Debug("", "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
 	}
 
 	// 4. Delete files and directories
 	// 4a. Delete files in our delete list
 	// Note:  This isn't as slick as recursion, but the former used way more memory, and actually made the program get killed by the OOM killer
 	// Do a pass where we start with deleting files, then their parents if they're empty
-	runLogger.Info("Deleting files")
+	funcLogger.Info("Deleting files")
 	deletedFilenames := make([]string, 0)
 	for filename := range fileMap.AllNonDirFilesNames() {
-		runLogger.Debug("Deleting file:", "filename", filename)
+		funcLogger.Debug("Deleting file:", "filename", filename)
 		// Remove the file
 		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
 		if err != nil {
-			runLogger.Error("error deleting file", "error", err)
+			funcLogger.Error("error deleting file", "error", err)
 			continue
 		}
 		// Remove the file from our map and from its parent's containsFiles slice
@@ -391,7 +373,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			)
 		}
 		deletedFilenames = append(deletedFilenames, filename)
-		runLogger.Info("File deleted", "filename", filename, "dateCreated", fileMap[filename].created)
+		funcLogger.Info("File deleted", "filename", filename, "dateCreated", fileMap[filename].created)
 	}
 
 	for _, filename := range deletedFilenames {
@@ -399,34 +381,31 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	}
 
 	if len(fileMap) == 0 {
-		runLogger.Info("No files left to delete. Exiting")
 		return errNoFilesToDelete
 	}
 
 	// 4b. Delete empty directories
-	runLogger.Info("Deleting empty directories")
-	// deletedFilenames = make([]string, 0)
+	funcLogger.Info("Deleting empty directories")
 	for filename := range fileMap.AllDirNames() {
 		if len(fileMap[filename].containsFiles) != 0 {
-			runLogger.Info("Directory is not empty, so we will not delete it:", "dirName", filename)
+			funcLogger.Info("Directory is not empty, so we will not delete it:", "dirName", filename)
 			continue
 		}
 
-		runLogger.Debug("Deleting directory", "dirName", filename)
+		funcLogger.Debug("Deleting directory", "dirName", filename)
 		// Remove the file
 		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
 		if err != nil {
-			runLogger.Error("error deleting directory", "error", err)
+			funcLogger.Error("error deleting directory", "error", err)
 			continue
 		}
 
-		// deletedFilenames = append(deletedFilenames, filename)
-		runLogger.Info("Empty directory deleted", "dirName", filename, "dateCreated", fileMap[filename].created)
+		funcLogger.Info("Empty directory deleted", "dirName", filename, "dateCreated", fileMap[filename].created)
 
 		// Keep walking up the tree and deleting empty directories recursively
-		// Remove the file from our map and from its parent's containsFiles slice
 		_parent := fileMap[filename].parent
 		for _parent != nil {
+			// Remove the file from our map and from its parent's containsFiles slice
 			_parent.containsFiles = slices.DeleteFunc(
 				_parent.containsFiles,
 				func(f *FileEntry) bool {
@@ -435,17 +414,16 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			)
 			// Check if the parent is empty. If not, we can stop
 			if len(_parent.containsFiles) != 0 {
-				runLogger.Debug("Parent is not empty, so we will not delete it", "dirName", _parent.Name())
+				funcLogger.Debug("Parent is not empty, so we will not delete it", "dirName", _parent.Name())
 				break
 			}
 			// Delete parent directory, since we've established that it's empty
-			runLogger.Debug("Parent is empty, so we will delete it", "dirName", _parent.Name())
+			funcLogger.Debug("Parent is empty, so we will delete it", "dirName", _parent.Name())
 			err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
 			if err != nil {
-				runLogger.Error("error deleting directory", "error", err)
+				funcLogger.Error("error deleting directory", "error", err)
 				break
 			}
-			// deletedFilenames = append(deletedFilenames, filename)
 			_parent = _parent.parent
 		}
 	}

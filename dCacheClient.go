@@ -30,11 +30,12 @@ func newDCacheClient(token string, skipTlsVerify bool) *dCacheClient {
 }
 
 func (d *dCacheClient) removeFile(ctx context.Context, urlPath string) error {
+	funcLogger := slog.With("caller", "dCacheClient.removeFile")
 	// Create the request
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, urlPath, nil)
 	if err != nil {
 		msg := "error creating HTTP request to delete file"
-		slog.Error(msg, "urlPath", urlPath, "error", err)
+		funcLogger.Error(msg, "urlPath", urlPath, "error", err)
 		return fmt.Errorf("%s: %w", msg, err)
 	}
 
@@ -50,7 +51,7 @@ func (d *dCacheClient) removeFile(ctx context.Context, urlPath string) error {
 			errFields = append(errFields, any("status"), any(resp.Status))
 		}
 		errFields = append(errFields, any("error"), any(err))
-		slog.Error(msg, errFields...)
+		funcLogger.Error(msg, errFields...)
 		return fmt.Errorf("%s: %w", msg, err)
 	}
 	defer resp.Body.Close()
@@ -63,6 +64,7 @@ func (d *dCacheClient) removeFile(ctx context.Context, urlPath string) error {
 		if err != nil {
 			msg = fmt.Sprintf("failed to read response body: %s", err)
 		}
+		funcLogger.Error("failed to delete file", "urlPath", urlPath, "status", resp.Status, "message", msg)
 		return fmt.Errorf("failed to delete file: %s: %s", resp.Status, msg)
 	}
 

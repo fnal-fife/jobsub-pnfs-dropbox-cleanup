@@ -42,14 +42,15 @@ type htgettokenClient struct {
 // outFile and options are optional - if not provided, they will be set to default values. If
 // options are provided, they will be passed to the HTGETTOKENOPTS environment variable.
 func newHtgettokenClient(vaultServer, vaultTokenFile, outFile string, options ...string) *htgettokenClient {
+	funcLogger := logger.With("caller", "newHtgettokenClient")
 	if vaultTokenFile != "" {
 		_, err := os.Stat(vaultTokenFile)
 		if err != nil {
 			if os.IsNotExist(err) {
-				slog.Error("vault token file does not exist", "file", vaultTokenFile)
+				funcLogger.Error("vault token file does not exist", "file", vaultTokenFile)
 				return nil
 			}
-			slog.Error("error getting file information about vault token file", "error", err)
+			funcLogger.Error("error getting file information about vault token file", "error", err)
 			return nil
 		}
 	}
@@ -78,17 +79,17 @@ func (h *htgettokenClient) withAuthFunc(a authFunc) *htgettokenClient {
 }
 
 func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) *htgettokenClient {
+	funcLogger := logger.With("caller", "htgettokenClient.withKerberosKeytabAuth")
 	f := func(ctx context.Context) (cleanup func(), err error) {
 		if keytabPath == "" || principal == "" {
-			return nil, fmt.Errorf("keytab path and principal must be provided for Kerberos authentication")
+			return nil, fmt.Errorf("error setting up kerberos keytab auth: keytab path and principal must be provided for Kerberos authentication")
 		}
-		slog.Debug("Setting up Kerberos authentication", "keytab", keytabPath, "principal", principal)
+		funcLogger.Debug("Setting up Kerberos authentication", "keytab", keytabPath, "principal", principal)
 
 		// Create kerberos cache for this service
 		krb5ccCache, err := os.CreateTemp("", "jobsub-pnfs-dropbox-cleanup-krb5ccCache")
 		if err != nil {
-			slog.Error("Cannot create kerberos cache. Subsequent operations will fail.")
-			return nil, fmt.Errorf("error creating file kerberos cache: %w", err)
+			return nil, fmt.Errorf("error setting up kerberos keytab auth: error creating file kerberos cache: %w", err)
 		}
 
 		os.Setenv("KRB5CCNAME", "FILE:"+krb5ccCache.Name())
@@ -96,21 +97,20 @@ func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) 
 		cleanupFunc := func() {
 			os.Unsetenv("KRB5CCNAME")
 			os.Remove(krb5ccCache.Name())
-			slog.Debug("Removed Kerberos credentials cache", "cache", krb5ccCache.Name())
+			funcLogger.Debug("Removed Kerberos credentials cache", "cache", krb5ccCache.Name())
 		}
 
 		// Get kerberos ticket from keytab
 		kinitPath, err := exec.LookPath("kinit")
 		if err != nil {
-			slog.Error("kinit executable not found in PATH", "error", err)
 			cleanupFunc()
 			return nil, fmt.Errorf("kinit executable not found in PATH: %w", err)
 		}
 
 		kinitCmd := exec.CommandContext(ctx, kinitPath, "-k", "-t", keytabPath, principal)
+		funcLogger.Debug("Running kinit to obtain Kerberos credentials", "command", kinitCmd.String())
 		kinitCmd.Env = os.Environ()
 		if err := kinitCmd.Run(); err != nil {
-			slog.Error("error running kinit to obtain Kerberos credentials", "error", err, "command", kinitCmd.String())
 			cleanupFunc()
 			return nil, fmt.Errorf("error running kinit: %w", err)
 		}
@@ -127,21 +127,20 @@ func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) 
 
 // getToken runs htgettoken to obtain a SciToken from the token issuer
 func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([]byte, error) {
+	funcLogger := logger.With("caller", "htgettokenClient.getToken")
 	if err := ctx.Err(); err != nil {
 		msg := "context deadline exceeded before getting token"
 		if errors.Is(err, context.Canceled) {
 			msg = "context canceled before getting token"
-			slog.Error(msg, "error", err)
+			funcLogger.Error(msg, "error", err)
 			return nil, fmt.Errorf("%s: %w", msg, err)
 		}
-		slog.Error(msg, "error", err)
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
 	if h.auth != nil {
 		cleanupFunc, err := h.auth(ctx)
 		if err != nil {
-			slog.Error("error setting up authentication for htgettoken", "error", err)
 			return nil, fmt.Errorf("error setting up authentication for htgettoken: %w", err)
 		}
 		if cleanupFunc != nil {
@@ -185,50 +184,49 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 	if h.debug {
 		runner = func() error {
 			stdoutStderr, err := cmd.CombinedOutput()
-			slog.Debug(string(stdoutStderr))
+			funcLogger.Debug(string(stdoutStderr))
 			return err
 		}
 	}
 
 	err := runner()
 	if err != nil {
-		slog.Error("error running htgettoken to obtain bearer token", "error", err)
-		slog.Debug("htgettoken command", "command", cmd.String())
-		return nil, fmt.Errorf("error running htgettoken: %w", err)
+		return nil, fmt.Errorf("error running htgettoken to obtain bearer token: %w", err)
 	}
 
 	// We have a token now in outFile, so read it in, validate it as a SciToken, and return it
+	errValidateMsg := "error validating token"
 	tok, err := os.ReadFile(h.outFile)
 	if err != nil {
-		slog.Error("error reading token outFile", "outfile", h.outFile, "error", err)
-		return nil, fmt.Errorf("error validating token: %w", err)
+		funcLogger.Error("error reading token outFile", "outfile", h.outFile, "error", err)
+		return nil, fmt.Errorf("%s: %w", errValidateMsg, err)
 	}
 
 	// Parse the token to verify that it's a valid JWT
 	jt, err := jwt.Parse(tok)
 	if err != nil {
-		slog.Error("error parsing token", "tokenfile", h.outFile, "error", err)
-		return nil, fmt.Errorf("error ingesting token outFile to SciToken: %w", err)
+		funcLogger.Error("error parsing token", "tokenfile", h.outFile, "error", err)
+		return nil, fmt.Errorf("%s: %w", errValidateMsg, err)
 	}
 
 	// Convert our token to a SciToken
 	st, err := scitokens.NewSciToken(jt)
 	if err != nil {
-		slog.Error("error creating SciToken from token", "tokenfile", h.outFile, "error", err)
-		return nil, fmt.Errorf("error validating token: %w", err)
+		funcLogger.Error("error creating SciToken from token file", "tokenfile", h.outFile, "error", err)
+		return nil, fmt.Errorf("%s: %w", errValidateMsg, err)
 	}
 
 	enf, err := scitokens.NewEnforcer(st.Issuer())
 	if err != nil {
-		slog.Error("error creating SciToken from token", "tokenfile", h.outFile, "error", err)
-		return nil, fmt.Errorf("error validating token: %w", err)
+		funcLogger.Error("error creating SciToken from token", "tokenfile", h.outFile, "error", err)
+		return nil, fmt.Errorf("%s: %w", errValidateMsg, err)
 	}
 
 	// Validate the token
 	err = enf.Validate(st)
 	if err != nil {
-		slog.Error("error validating token", "tokenfile", h.outFile, "error", err)
-		return nil, fmt.Errorf("error validating token: %w", err)
+		funcLogger.Error("error validating SciToken file", "tokenfile", h.outFile, "error", err)
+		return nil, fmt.Errorf("%s: %w", errValidateMsg, err)
 	}
 
 	return tok, nil

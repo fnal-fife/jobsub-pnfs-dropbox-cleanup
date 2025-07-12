@@ -17,6 +17,8 @@ import (
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/providers/posflag"
 	"github.com/knadh/koanf/v2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/push"
 	slogloki "github.com/samber/slog-loki/v3"
 	slogmulti "github.com/samber/slog-multi"
 	flag "github.com/spf13/pflag"
@@ -25,9 +27,12 @@ import (
 var (
 	now    = time.Now()
 	exeMap = map[string]string{} // Map of all the executables we will need to find in PATH
-	// Config
-	k      = koanf.New(".") // Config path delimiter is "."
-	logger *slog.Logger     // Global logger instance
+
+	k               = koanf.New(".")           // Config. Path delimiter is "."
+	logger          *slog.Logger               // Global logger instance
+	pusher          *push.Pusher               // Prometheus push gateway client
+	metricsRegistry = prometheus.NewRegistry() // Prometheus metrics registry to gather metrics
+
 )
 
 // Defaults
@@ -48,6 +53,28 @@ var (
 	defaultVaultTokenTimeLeft  = time.Duration(3 * 24 * time.Hour) // 3 days
 	defaultVaultTokenAgeCutoff = time.Duration(7 * 24 * time.Hour) // 7 days
 	defaultCondorAuthMethod    = "IDTOKENS"                        // Default condor authentication method
+)
+
+// Metrics
+var (
+	promDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "jobsub_pnfs_dropbox_cleanup",
+		Name:      "stage_duration_seconds",
+		Help:      "The amount of time it took to run a stage of the cleanup",
+	},
+		[]string{
+			"stage",
+		},
+	)
+	getDropboxFilesListByExptDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "jobsub_pnfs_dropbox_cleanup",
+		Name:      "get_files_list_by_expt_duration_seconds",
+		Help:      "The duration of gfal2Client.getFilesList operations, by experiment",
+	},
+		[]string{
+			"experiment",
+		},
+	)
 )
 
 func main() {
@@ -103,13 +130,26 @@ func main() {
 	)
 	logger = logger.
 		With("environment", k.String("loki.environment")).
-		With("service", k.String("loki.service"))
+		With("service", k.String("service"))
 	funcLogger := logger.With("caller", "main.main")
 
 	if k.Bool("debug") {
 		funcLogger.Debug("Debug logging enabled")
 	}
 	funcLogger.Info("Initialized logging")
+
+	// Set up metrics
+	pusher = push.New(k.String("prometheus.pushURL"), k.String("service")).Gatherer(metricsRegistry)
+	defer func() {
+		// Push metrics to the Prometheus push gateway
+		if err := pusher.Push(); err != nil {
+			funcLogger.Error("error pushing metrics to Prometheus push gateway", "error", err)
+		}
+		funcLogger.Debug("Pushed metrics to Prometheus push gateway", "pushURL", k.String("prometheus.pushURL"))
+	}()
+	// Register metrics
+	metricsRegistry.MustRegister(promDuration)
+	metricsRegistry.MustRegister(getDropboxFilesListByExptDuration)
 
 	// Set up our context with timeout
 	timeout, err := time.ParseDuration(k.String("timeout"))
@@ -153,6 +193,7 @@ func main() {
 
 func run(ctx context.Context, k *koanf.Koanf) error {
 	funcLogger := logger.With("caller", "main.run")
+	startSetup := time.Now()
 	// 0. Checks and setup
 	// 0a. Check for --e/--experiment flag
 	s := k.String("experiment")
@@ -171,6 +212,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	// 0c. Get our BEARER token to obtain files
 	// 0ca. Make sure that vault token has enough time left before expiration. We will pass this value to the htgettokenClient,
 	// which will run this check for us
+	startGetBearerToken := time.Now()
 	minTimeLeft, err := time.ParseDuration(k.String("vault.minVaultTokenTimeLeft"))
 	if err != nil {
 		funcLogger.Error("error parsing minimum vault token time left duration. Using default value", "error", err)
@@ -196,8 +238,11 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	if err != nil {
 		return fmt.Errorf("error getting and validating token: %w", err)
 	}
+	promDuration.WithLabelValues("getBearerToken").Set(time.Since(startGetBearerToken).Seconds())
+	promDuration.WithLabelValues("setup").Set(time.Since(startSetup).Seconds())
 
 	// 1. Get files list from pnfs dropbox
+	startGetDropboxFiles := time.Now()
 	addedEnvironment := []string{"BEARER_TOKEN=" + string(tok)}
 	var retryDuration time.Duration
 	retryDuration, err = time.ParseDuration(k.String("gfal2.retrySleep"))
@@ -241,8 +286,11 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		funcLogger.Debug("File entry", "file", file.Name())
 	}
 	funcLogger.Debug("Got dropbox files successfully")
+	getDropboxFilesListByExptDuration.WithLabelValues(k.String("experiment")).Set(time.Since(startGetDropboxFiles).Seconds())
+	promDuration.WithLabelValues("getDropboxFiles").Set(time.Since(startGetDropboxFiles).Seconds())
 
 	// 2. Get job files from condor schedds
+	startGetCondorFiles := time.Now()
 	// 2a. Find our schedds
 	funcLogger.Debug("Finding condor cluster schedds")
 	schedds, err := getCondorSchedds(ctx, k.String("condor.pool"), k.String("condor.scheddConstraint"))
@@ -303,10 +351,13 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		}
 	}
 
+	promDuration.WithLabelValues("getCondorFiles").Set(time.Since(startGetCondorFiles).Seconds())
+
 	// 3. Remove any files from our delete list that are in the list of job files or are recent
 	// We are iterating a second time to check if the files are recent, which may not be totally efficient, but it should improve readability
 	// Maybe if we have performance problems, we first get the list of job files, then pass in a filter function to our tree-builder that could check
 	// for recency or job file membership
+	startFilterFiles := time.Now()
 	fileAgeCutoff, err := time.ParseDuration(k.String("deleteFilesOlderThan"))
 	if err != nil {
 		funcLogger.Error("error parsing configured file age cutoff duration", "error", err)
@@ -334,6 +385,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 	// If we have no files left to delete, or if we're in test mode, we can stop here
 	if len(fileMap) == 0 {
+		promDuration.WithLabelValues("filterFiles").Set(time.Since(startFilterFiles).Seconds())
 		return errNoFilesToDelete
 	}
 	if k.Bool("test") {
@@ -343,6 +395,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			funcLogger.Info(name, "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
 		}
 		funcLogger.Info("Stopping here")
+		promDuration.WithLabelValues("filterFiles").Set(time.Since(startFilterFiles).Seconds())
 		return nil
 	}
 
@@ -351,7 +404,10 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		funcLogger.Debug("", "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
 	}
 
+	promDuration.WithLabelValues("filterFiles").Set(time.Since(startFilterFiles).Seconds())
+
 	// 4. Delete files and directories
+	startDeleteFiles := time.Now()
 	// 4a. Delete files in our delete list
 	// Note:  This isn't as slick as recursion, but the former used way more memory, and actually made the program get killed by the OOM killer
 	// Do a pass where we start with deleting files, then their parents if they're empty
@@ -383,6 +439,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	}
 
 	if len(fileMap) == 0 {
+		promDuration.WithLabelValues("deleteFiles").Set(time.Since(startDeleteFiles).Seconds())
 		return errNoFilesToDelete
 	}
 
@@ -430,6 +487,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		}
 	}
 
+	promDuration.WithLabelValues("deleteFiles").Set(time.Since(startDeleteFiles).Seconds())
 	return nil
 }
 

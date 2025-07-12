@@ -9,6 +9,7 @@ require (
 	github.com/knadh/koanf/providers/posflag v1.0.1
 	github.com/knadh/koanf/v2 v2.2.1
 	github.com/lestrrat-go/jwx v1.2.7
+	github.com/prometheus/client_golang v1.22.0
 	github.com/retzkek/htcondor-go v1.4.1
 	github.com/samber/slog-loki/v3 v3.5.4
 	github.com/samber/slog-multi v1.4.1
@@ -55,7 +56,6 @@ require (
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_golang v1.22.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.63.0 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect

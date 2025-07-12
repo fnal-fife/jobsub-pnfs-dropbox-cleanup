@@ -13,9 +13,34 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	condor "github.com/retzkek/htcondor-go"
 	classad "github.com/retzkek/htcondor-go/classad"
+)
+
+// Metrics
+var (
+	getScheddsDuration = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "jobsub_pnfs_dropbox_cleanup",
+		Name:      "get_schedds_duration_seconds",
+		Help:      "The amount of time it took to query the condor collector for schedds",
+	})
+	condorScheddVerifyDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "jobsub_pnfs_dropbox_cleanup",
+		Name:      "condor_schedd_verify_duration_seconds",
+		Help:      "The amount of time it took to verify schedd authentication",
+	},
+		[]string{"auth_method"},
+	)
+	getPNFSJobsForExperimentDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "jobsub_pnfs_dropbox_cleanup",
+		Name:      "get_pnfs_jobs_for_experiment_duration_seconds",
+		Help:      "The amount of time it took to get PNFS jobs on the schedd for the experiment",
+	},
+		[]string{"schedd", "experiment"},
+	)
 )
 
 func init() {
@@ -54,10 +79,17 @@ func init() {
 		exeMap[exe] = p
 	}
 	slog.Info("Found all required executables for condor operations")
+
+	// Register the metrics
+	metricsRegistry.MustRegister(getScheddsDuration)
+	metricsRegistry.MustRegister(condorScheddVerifyDuration)
+	metricsRegistry.MustRegister(getPNFSJobsForExperimentDuration)
+	slog.Debug("Registered metrics for condor schedds operations")
 }
 
 func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSchedd, error) {
 	funcLogger := logger.With("caller", "getCondorSchedds")
+	start := time.Now()
 	cmd := condor.NewCommand(exeMap["condor_status"]).WithPool(pool).WithConstraint(constraint).WithArg("-schedd")
 	funcLogger.Debug("Running command", "command", append([]string{cmd.Command}, cmd.MakeArgs()...))
 	ads, err := cmd.RunWithContext(ctx)
@@ -76,6 +108,8 @@ func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSc
 		}
 		schedds = append(schedds, schedd)
 	}
+
+	getScheddsDuration.Set(time.Since(start).Seconds())
 	return schedds, nil
 }
 
@@ -90,6 +124,7 @@ func (c *condorSchedd) verify(ctx context.Context, a condorAuthMethod) error {
 }
 
 func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string, constraint string) ([]classad.ClassAd, error) {
+	start := time.Now()
 	funcLogger := logger.With("caller", "getPNFSJobsForExperiment")
 	useConstraint := buildConstraint(experiment, constraint)
 	funcLogger.Debug("Final job constraint", "constraint", useConstraint)
@@ -108,6 +143,7 @@ func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment 
 		return nil, fmt.Errorf("error reading classads: %w", err)
 	}
 
+	getPNFSJobsForExperimentDuration.WithLabelValues(c.name, experiment).Set(time.Since(start).Seconds())
 	return ads, nil
 }
 
@@ -228,6 +264,7 @@ func setupIDTOKENEnvironment() (cleanupFunc func()) {
 // sciTokenAuth checks if the standard location for a scitoken has a valid scitoken. If so, it will
 // set the environment variable BEARER_TOKEN_FILE to that path
 func sciTokenAuth(ctx context.Context, c *condorSchedd) error {
+	start := time.Now()
 	funcLogger := logger.With("caller", "sciTokenAuth")
 	if !checkForClientAuthMethod(ctx, SCITOKENS) {
 		return errUnsupportedCondorAuthMethod
@@ -248,6 +285,7 @@ func sciTokenAuth(ctx context.Context, c *condorSchedd) error {
 		return fmt.Errorf("error checking scitoken file: %w", err)
 	}
 	c.cmdEnv = append(c.cmdEnv, "BEARER_TOKEN_FILE="+tokenFile)
+	condorScheddVerifyDuration.WithLabelValues(SCITOKENS.String()).Set(time.Since(start).Seconds())
 	return nil
 }
 
@@ -258,9 +296,9 @@ func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 	// TODO Can this be done with the condor library?  Not yet
 	// checkCmd := condor.NewCommand("/usr/bin/condor_config_val").WithArg("SEC_CLIENT_AUTHENTICATION_METHODS")
 	// slog.Debug("Running command", "command", append([]string{checkCmd.Command}, checkCmd.MakeArgs()...))
+	start := time.Now()
 	funcLogger := logger.With("caller", "idTokenAuth")
-	authMethod := IDTOKENS
-	if !checkForClientAuthMethod(ctx, authMethod) {
+	if !checkForClientAuthMethod(ctx, IDTOKENS) {
 		return errUnsupportedCondorAuthMethod
 	}
 
@@ -301,6 +339,8 @@ func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 	}
 
 	c.authMethod = append(c.authMethod, IDTOKENS)
+
+	condorScheddVerifyDuration.WithLabelValues(IDTOKENS.String()).Set(time.Since(start).Seconds())
 	return nil
 }
 

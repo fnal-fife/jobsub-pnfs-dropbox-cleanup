@@ -1,3 +1,4 @@
+service: "jobsub-pnfs-dropbox-cleanup"
 timeout: "10m"
 totalFileCountLimit: 9
 # totalFileCountLimit: 50
@@ -37,4 +38,6 @@ vault:
 loki:
   url: ***REMOVED***
   environment: "dev"
-  service: "jobsub-pnfs-dropbox-cleanup"
+
+prometheus:
+  pushURL: ***REMOVED***

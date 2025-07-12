@@ -9,9 +9,19 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/lestrrat-go/jwx/jwt"
+	"github.com/prometheus/client_golang/prometheus"
 	scitokens "github.com/scitokens/scitokens-go"
+)
+
+var (
+	getBearerTokenDuration = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "jobsub_pnfs_dropbox_cleanup",
+		Name:      "get_bearer_token_duration_seconds",
+		Help:      "The duration of htgettokenClient.getToken operations",
+	})
 )
 
 func init() {
@@ -27,6 +37,10 @@ func init() {
 	}
 	exeMap["htgettoken"] = p
 	slog.Info("Found all required executables for htgettoken client operations")
+
+	// Register the metrics
+	metricsRegistry.MustRegister(getBearerTokenDuration)
+	slog.Debug("Registered htgettoken client metrics")
 }
 
 type htgettokenClient struct {
@@ -127,6 +141,7 @@ func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) 
 
 // getToken runs htgettoken to obtain a SciToken from the token issuer
 func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([]byte, error) {
+	start := time.Now()
 	funcLogger := logger.With("caller", "htgettokenClient.getToken")
 	if err := ctx.Err(); err != nil {
 		msg := "context deadline exceeded before getting token"
@@ -229,6 +244,7 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 		return nil, fmt.Errorf("%s: %w", errValidateMsg, err)
 	}
 
+	getBearerTokenDuration.Set(time.Since(start).Seconds())
 	return tok, nil
 }
 

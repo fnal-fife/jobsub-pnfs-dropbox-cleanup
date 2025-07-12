@@ -7,7 +7,25 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
+
+// Metrics
+var (
+	dCacheClientRemoveFileHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "jobsub_pnfs_dropbox_cleanup",
+		Name:      "dcache_client_remove_file_duration_seconds",
+		Help:      "The duration of dCache client delete operations",
+	})
+)
+
+func init() {
+	// Register the metrics
+	metricsRegistry.MustRegister(dCacheClientRemoveFileHistogram)
+	slog.Debug("Registered dCache client metrics")
+}
 
 // dCacheClient is a client for interacting with dCache via HTTP API. It uses a token for authentication.
 type dCacheClient struct {
@@ -30,6 +48,7 @@ func newDCacheClient(token string, skipTlsVerify bool) *dCacheClient {
 }
 
 func (d *dCacheClient) removeFile(ctx context.Context, urlPath string) error {
+	start := time.Now()
 	funcLogger := slog.With("caller", "dCacheClient.removeFile")
 	// Create the request
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, urlPath, nil)
@@ -69,5 +88,6 @@ func (d *dCacheClient) removeFile(ctx context.Context, urlPath string) error {
 	}
 
 	slog.Debug("File deleted successfully", "urlPath", urlPath)
+	dCacheClientRemoveFileHistogram.Observe(time.Since(start).Seconds())
 	return nil
 }

@@ -49,7 +49,7 @@ func newDCacheClient(token string, skipTlsVerify bool) *dCacheClient {
 
 func (d *dCacheClient) removeFile(ctx context.Context, urlPath string) error {
 	start := time.Now()
-	funcLogger := slog.With("caller", "dCacheClient.removeFile")
+	funcLogger := logger.With("caller", "dCacheClient.removeFile")
 	// Create the request
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, urlPath, nil)
 	if err != nil {

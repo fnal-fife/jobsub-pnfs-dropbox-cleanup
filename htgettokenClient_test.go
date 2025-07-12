@@ -22,11 +22,10 @@ func TestNewHtgettokenClient(t *testing.T) {
 	// Adapted from https://stackoverflow.com/a/26806093
 	captureOutput := func(f func()) []byte {
 		var buf bytes.Buffer
-		oldLogger := slog.Default()
-		l := slog.New(slog.NewTextHandler(&buf, nil))
-		slog.SetDefault(l)
+		oldLogger := logger
+		logger = slog.New(slog.NewTextHandler(&buf, nil))
 		f()
-		slog.SetDefault(oldLogger)
+		logger = oldLogger
 		return buf.Bytes()
 	}
 

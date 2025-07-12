@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -62,18 +63,21 @@ var (
 		Name:      "stage_duration_seconds",
 		Help:      "The amount of time it took to run a stage of the cleanup",
 	},
-		[]string{
-			"stage",
-		},
+		[]string{"stage"},
 	)
 	getDropboxFilesListByExptDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "jobsub_pnfs_dropbox_cleanup",
 		Name:      "get_files_list_by_expt_duration_seconds",
 		Help:      "The duration of gfal2Client.getFilesList operations, by experiment",
 	},
-		[]string{
-			"experiment",
-		},
+		[]string{"experiment"},
+	)
+	numFilesDeleted = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "jobsub_pnfs_dropbox_cleanup",
+		Name:      "files_deleted_total",
+		Help:      "The number of files deleted by the cleanup",
+	},
+		[]string{"experiment"},
 	)
 )
 
@@ -150,6 +154,7 @@ func main() {
 	// Register metrics
 	metricsRegistry.MustRegister(promDuration)
 	metricsRegistry.MustRegister(getDropboxFilesListByExptDuration)
+	metricsRegistry.MustRegister(numFilesDeleted)
 
 	// Set up our context with timeout
 	timeout, err := time.ParseDuration(k.String("timeout"))
@@ -431,6 +436,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			)
 		}
 		deletedFilenames = append(deletedFilenames, filename)
+		numFilesDeleted.WithLabelValues(k.String("experiment")).Inc()
 		funcLogger.Info("File deleted", "filename", filename, "dateCreated", fileMap[filename].created)
 	}
 
@@ -451,6 +457,13 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			continue
 		}
 
+		// Don't delete the experiment area. This should never happen, but the safeguard is here
+		// just in case
+		if filename == path.Join("/pnfs/", exptArea) {
+			funcLogger.Info("Skipping experiment area", "dirName", filename)
+			continue
+		}
+
 		funcLogger.Debug("Deleting directory", "dirName", filename)
 		// Remove the file
 		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
@@ -459,8 +472,10 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			continue
 		}
 
+		numFilesDeleted.WithLabelValues(k.String("experiment")).Inc()
 		funcLogger.Info("Empty directory deleted", "dirName", filename, "dateCreated", fileMap[filename].created)
 
+		// Make sure we don't delete root
 		// Keep walking up the tree and deleting empty directories recursively
 		_parent := fileMap[filename].parent
 		for _parent != nil {
@@ -471,18 +486,28 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 					return f.Name() == filename
 				},
 			)
+
 			// Check if the parent is empty. If not, we can stop
 			if len(_parent.containsFiles) != 0 {
 				funcLogger.Debug("Parent is not empty, so we will not delete it", "dirName", _parent.Name())
 				break
 			}
+			// Don't delete the experiment area. This should never happen, but the safeguard is here
+			// just in case
+			if _parent.Name() == path.Join("/pnfs/", exptArea) {
+				funcLogger.Info("Skipping experiment area", "dirName", _parent.Name())
+				continue
+			}
+
 			// Delete parent directory, since we've established that it's empty
 			funcLogger.Debug("Parent is empty, so we will delete it", "dirName", _parent.Name())
-			err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
+			err := dClient.removeFile(ctx, PNFSToHTTPS(_parent.Name(), dCacheHostPort, stripPNFSFromPath))
 			if err != nil {
 				funcLogger.Error("error deleting directory", "error", err)
 				break
 			}
+			numFilesDeleted.WithLabelValues(k.String("experiment")).Inc()
+			funcLogger.Info("Empty directory deleted", "dirName", _parent.Name(), "dateCreated", fileMap[filename].created)
 			_parent = _parent.parent
 		}
 	}

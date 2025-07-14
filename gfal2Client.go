@@ -53,7 +53,6 @@ func init() {
 		}
 		exeMap[exe] = p
 	}
-	slog.Info("Found all required executables for gfal2Client operations")
 }
 
 // TODO This should probably have an authenticator (token or proxy?)

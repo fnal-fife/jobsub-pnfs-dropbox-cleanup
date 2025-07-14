@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
@@ -74,13 +73,11 @@ func init() {
 		}
 		exeMap[exe] = p
 	}
-	slog.Info("Found all required executables for condor operations")
 
 	// Register the metrics
 	metricsRegistry.MustRegister(getScheddsDuration)
 	metricsRegistry.MustRegister(condorScheddVerifyDuration)
 	metricsRegistry.MustRegister(getPNFSJobsForExperimentDuration)
-	slog.Debug("Registered metrics for condor schedds operations")
 }
 
 func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSchedd, error) {

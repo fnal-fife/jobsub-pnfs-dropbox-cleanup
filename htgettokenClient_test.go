@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -237,14 +238,10 @@ func TestWithKerberosKeytabAuth(t *testing.T) {
 		description         string
 		keytab              string
 		principal           string
-		setupFunc           func(*testing.T) func() // returns a cleanup function
-		expectedFunc        func()
+		setupFunc           func(*testing.T) func()  // returns a cleanup function that the test should call at its end
+		expectedFuncCheck   func(cleanupFunc func()) // Run a given cleanup function returned by WithKerberosKeytabAuth, and see if we get expected behavior
 		expectedErrContains string
 	}
-
-	// Cases:
-	// 4. kinit fails to run - set kinit to script that exits 1
-	// 5. kinit runs successfully - set kinit to script that exits 0, check cleanup script
 
 	testCases := []testCase{
 		{
@@ -301,6 +298,76 @@ func TestWithKerberosKeytabAuth(t *testing.T) {
 			nil,
 			"kinit executable not found in PATH",
 		},
+		{
+
+			// 4. kinit fails to run - set kinit to script that exits 1
+			"kinit fails to run",
+			"/path/to/keytab",
+			"principalString",
+			func(t *testing.T) func() {
+				oldPath := os.Getenv("PATH")
+				temp := t.TempDir()
+				script := []byte(`
+				#!/bin/sh
+				echo "Fake bad kinit"
+				exit 1
+				`)
+				scriptPath := path.Join(temp, "kinit")
+				if err := os.WriteFile(scriptPath, script, 0755); err != nil {
+					t.Fatal("Failed to write test script ", err)
+				}
+				os.Setenv("PATH", temp)
+				return func() {
+					os.Setenv("PATH", oldPath)
+				}
+			},
+			nil,
+			"error setting up kerberos keytab auth: error running kinit",
+		},
+		{
+			"kinit runs successfully",
+			"/path/to/keytab",
+			"principalString",
+			func(t *testing.T) func() {
+				oldPath := os.Getenv("PATH")
+				temp := t.TempDir()
+				script := []byte(`
+				#!/bin/sh
+				echo "Fake good kinit"
+				exit 0
+				`)
+				scriptPath := path.Join(temp, "kinit")
+				if err := os.WriteFile(scriptPath, script, 0755); err != nil {
+					t.Fatal("Failed to write test script ", err)
+				}
+				os.Setenv("PATH", temp)
+				return func() {
+					os.Setenv("PATH", oldPath)
+				}
+			},
+			func(cleanupFunc func()) {
+				if cleanupFunc == nil {
+					return
+				}
+
+				// Get our post-function KRB5CCNAME env value
+				val, ok := os.LookupEnv("KRB5CCNAME")
+				assert.True(t, ok, "KRB5CCNAME should be set before cleanup")
+				krb5ccCacheName := strings.TrimPrefix(val, "FILE:")
+
+				// Now we can test the cleanup function
+				cleanupFunc()
+
+				// Check that KRB5CCNAME is unset
+				_, ok = os.LookupEnv("KRB5CCNAME")
+				assert.False(t, ok, "KRB5CCNAME should not be set after cleanup func is run")
+
+				// Check that the kerberos credentials cache directory is removed
+				_, err := os.Stat(krb5ccCacheName)
+				assert.ErrorIs(t, err, os.ErrNotExist, "Kerberos credentials cache should not exist after cleanup")
+			},
+			"error setting up kerberos keytab auth: error running kinit",
+		},
 	}
 
 	for _, test := range testCases {
@@ -321,14 +388,10 @@ func TestWithKerberosKeytabAuth(t *testing.T) {
 				assert.ErrorContains(t, err, test.expectedErrContains)
 				assert.Nil(t, cleanupFunc, "cleanup function should be nil when there is an error")
 			}
-			// if test.expectedErr == nil {
-			// 	assert.Nil(t, err)
-			// 	if test.expectedFunc != nil {
-			// 		cleanupFunc()
-			// 		_, ok := os.LookupEnv("KRB5CCNAME")
-			// 		assert.False(t, ok, "KRB5CCNAME should not be set")
-			// 	}
-			// }
+
+			if test.expectedFuncCheck != nil {
+				test.expectedFuncCheck(cleanupFunc)
+			}
 		})
 	}
 }

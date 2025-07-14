@@ -26,8 +26,10 @@ import (
 )
 
 var (
-	now    = time.Now()
-	exeMap = map[string]string{} // Map of all the executables we will need to find in PATH
+	now            = time.Now()
+	exeMap         = map[string]string{} // Map of all the executables we will need to find in PATH
+	version        string                // Should be injected at build time with something like go build -ldflags="-X main.version=$VERSION"
+	buildTimestamp string                // Should be injected at build time with something like go build -ldflags="-X main.buildTimeStamp=$BUILDTIMESTAMP"
 
 	k               = koanf.New(".")           // Config. Path delimiter is "."
 	logger          *slog.Logger               // Global logger instance
@@ -93,8 +95,15 @@ func main() {
 	f.StringP("config", "c", defaultConfigFilePath, "Config file to load (default: /etc/jobsub-pnfs-dropbox-cleanup.yml)")
 	f.BoolP("debug", "d", false, "Enable debug logging")
 	f.BoolP("test", "t", false, "Run in test mode (no actual deletions)")
+	f.Bool("version", false, "Print version information and exit")
 
 	f.Parse(os.Args[1:])
+
+	// Check for version flag
+	if versionCalled, _ := f.GetBool("version"); versionCalled {
+		fmt.Printf("jobsub-pnfs-dropbox-cleanup version %s, build %s\n", version, buildTimestamp)
+		os.Exit(0)
+	}
 
 	// Load Config
 	configFileFlagVal, _ := f.GetString("config") // If we fail to get this value, we'll just use the default value

@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	getBearerTokenDuration = prometheus.NewGauge(prometheus.GaugeOpts{
+	getBearerTokenDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "jobsub_pnfs_dropbox_cleanup",
 		Name:      "get_bearer_token_duration_seconds",
 		Help:      "The duration of htgettokenClient.getToken operations",
@@ -242,7 +242,7 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 		return nil, fmt.Errorf("%s: %w", errValidateMsg, err)
 	}
 
-	getBearerTokenDuration.Set(time.Since(start).Seconds())
+	getBearerTokenDuration.Observe(time.Since(start).Seconds())
 	return tok, nil
 }
 

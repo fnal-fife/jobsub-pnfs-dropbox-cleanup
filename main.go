@@ -67,7 +67,7 @@ var (
 	},
 		[]string{"stage"},
 	)
-	getDropboxFilesListByExptDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	getDropboxFilesListByExptDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "jobsub_pnfs_dropbox_cleanup",
 		Name:      "get_files_list_by_expt_duration_seconds",
 		Help:      "The duration of gfal2Client.getFilesList operations, by experiment",
@@ -300,7 +300,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		funcLogger.Debug("File entry", "file", file.Name())
 	}
 	funcLogger.Debug("Got dropbox files successfully")
-	getDropboxFilesListByExptDuration.WithLabelValues(k.String("experiment")).Set(time.Since(startGetDropboxFiles).Seconds())
+	getDropboxFilesListByExptDuration.WithLabelValues(k.String("experiment")).Observe(time.Since(startGetDropboxFiles).Seconds())
 	promDuration.WithLabelValues("getDropboxFiles").Set(time.Since(startGetDropboxFiles).Seconds())
 
 	// 2. Get job files from condor schedds

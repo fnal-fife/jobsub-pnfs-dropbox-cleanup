@@ -36,11 +36,9 @@ func init() {
 		panic("Required executable htgettoken not found in PATH")
 	}
 	exeMap["htgettoken"] = p
-	slog.Info("Found all required executables for htgettoken client operations")
 
 	// Register the metrics
 	metricsRegistry.MustRegister(getBearerTokenDuration)
-	slog.Debug("Registered htgettoken client metrics")
 }
 
 type htgettokenClient struct {

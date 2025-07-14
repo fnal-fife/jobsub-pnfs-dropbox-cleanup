@@ -17,7 +17,7 @@ import (
 
 // Metrics
 var (
-	getScheddsDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+	getScheddsDuration = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: "jobsub_pnfs_dropbox_cleanup",
 		Name:      "get_schedds_duration_seconds",
 		Help:      "The amount of time it took to query the condor collector for schedds",
@@ -29,7 +29,7 @@ var (
 	},
 		[]string{"auth_method"},
 	)
-	getPNFSJobsForExperimentDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+	getPNFSJobsForExperimentDuration = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "jobsub_pnfs_dropbox_cleanup",
 		Name:      "get_pnfs_jobs_for_experiment_duration_seconds",
 		Help:      "The amount of time it took to get PNFS jobs on the schedd for the experiment",
@@ -102,7 +102,7 @@ func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSc
 		schedds = append(schedds, schedd)
 	}
 
-	getScheddsDuration.Observe(time.Since(start).Seconds())
+	getScheddsDuration.Set(time.Since(start).Seconds())
 	return schedds, nil
 }
 
@@ -136,7 +136,7 @@ func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment 
 		return nil, fmt.Errorf("error reading classads: %w", err)
 	}
 
-	getPNFSJobsForExperimentDuration.WithLabelValues(c.name, experiment).Observe(time.Since(start).Seconds())
+	getPNFSJobsForExperimentDuration.WithLabelValues(c.name, experiment).Set(time.Since(start).Seconds())
 	return ads, nil
 }
 

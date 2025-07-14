@@ -96,7 +96,7 @@ func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) 
 	funcLogger := logger.With("caller", "htgettokenClient.withKerberosKeytabAuth")
 	f := func(ctx context.Context) (cleanup func(), err error) {
 		if keytabPath == "" || principal == "" {
-			return nil, fmt.Errorf("error setting up kerberos keytab auth: keytab path and principal must be provided for Kerberos authentication")
+			return nil, errors.New("error setting up kerberos keytab auth: keytab path and principal must be provided for Kerberos authentication")
 		}
 		funcLogger.Debug("Setting up Kerberos authentication", "keytab", keytabPath, "principal", principal)
 
@@ -118,7 +118,7 @@ func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) 
 		kinitPath, err := exec.LookPath("kinit")
 		if err != nil {
 			cleanupFunc()
-			return nil, fmt.Errorf("kinit executable not found in PATH: %w", err)
+			return nil, fmt.Errorf("error setting up kerberos keytab auth: kinit executable not found in PATH: %w", err)
 		}
 
 		kinitCmd := exec.CommandContext(ctx, kinitPath, "-k", "-t", keytabPath, principal)
@@ -126,7 +126,7 @@ func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) 
 		kinitCmd.Env = os.Environ()
 		if err := kinitCmd.Run(); err != nil {
 			cleanupFunc()
-			return nil, fmt.Errorf("error running kinit: %w", err)
+			return nil, fmt.Errorf("error setting up kerberos keytab auth: error running kinit: %w", err)
 		}
 
 		// Set HTGETTOKENOPTS to use the same credkey string as principal

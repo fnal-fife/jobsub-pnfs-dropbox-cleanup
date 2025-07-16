@@ -81,6 +81,13 @@ var (
 	},
 		[]string{"experiment"},
 	)
+	numErrorsDeletingFiles = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "jobsub_pnfs_dropbox_cleanup",
+		Name:      "errors_deleting_files_total",
+		Help:      "The number of errors encountered while deleting files",
+	},
+		[]string{"experiment"},
+	)
 )
 
 func main() {
@@ -164,6 +171,7 @@ func main() {
 	metricsRegistry.MustRegister(promDuration)
 	metricsRegistry.MustRegister(getDropboxFilesListByExptDuration)
 	metricsRegistry.MustRegister(numFilesDeleted)
+	metricsRegistry.MustRegister(numErrorsDeletingFiles)
 
 	// Set up our context with timeout
 	timeout, err := time.ParseDuration(k.String("timeout"))
@@ -433,6 +441,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
 		if err != nil {
 			funcLogger.Error("error deleting file", "error", err)
+			numErrorsDeletingFiles.WithLabelValues(k.String("experiment")).Inc()
 			continue
 		}
 		// Remove the file from our map and from its parent's containsFiles slice
@@ -478,6 +487,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
 		if err != nil {
 			funcLogger.Error("error deleting directory", "error", err)
+			numErrorsDeletingFiles.WithLabelValues(k.String("experiment")).Inc()
 			continue
 		}
 
@@ -513,6 +523,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			err := dClient.removeFile(ctx, PNFSToHTTPS(_parent.Name(), dCacheHostPort, stripPNFSFromPath))
 			if err != nil {
 				funcLogger.Error("error deleting directory", "error", err)
+				numErrorsDeletingFiles.WithLabelValues(k.String("experiment")).Inc()
 				break
 			}
 			numFilesDeleted.WithLabelValues(k.String("experiment")).Inc()

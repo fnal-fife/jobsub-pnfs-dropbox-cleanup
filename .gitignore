@@ -1,0 +1,6 @@
+# Executable 
+jobsub-pnfs-dropbox-cleanup
+
+# Common development artifacts
+*.rpm
+.vscode/*

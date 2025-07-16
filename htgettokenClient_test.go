@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	scitokens "github.com/scitokens/scitokens-go"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -398,8 +399,6 @@ func TestWithKerberosKeytabAuth(t *testing.T) {
 }
 
 // Cases:
-// 6. error parsing token (e.g. not a valid JWT)
-// 7. error creating SciToken from token file
 // 8. error validating SciToken file
 // 9. error validating token (e.g. not a valid SciToken)
 // 10. successful token retrieval and validation
@@ -527,6 +526,94 @@ func TestGetToken(t *testing.T) {
 			nil,
 			fs.ErrPermission.Error(),
 		},
+		{
+			"error parsing token outFile - not a valid JWT",
+			func(t *testing.T) context.Context { return context.Background() },
+			func(t *testing.T) (*htgettokenClient, func()) {
+				temp := t.TempDir()
+				// Set up our fake token
+				fakeTokenContent := []byte("fake token content")
+				fakeTokenPath := path.Join(temp, "faketoken")
+				if err := os.WriteFile(fakeTokenPath, fakeTokenContent, 0644); err != nil {
+					t.Fatal("Failed to write fake token file ", err)
+				}
+
+				// Point our htgettokenClient at the fake token
+				h := &htgettokenClient{
+					outFile: fakeTokenPath,
+				}
+
+				// Auth func returns a nil error, but htgettoken command fails
+				h.auth = func(context.Context) (cleanupFunc func(), err error) {
+					return nil, nil
+				}
+				// Set up a script that simulates a working htgettoken command, and put it in exeMap so
+				// that the htgettokenClient.getToken will use it
+				oldExePath, ok := exeMap["htgettoken"]
+				fakeHtgettokenScript := []byte(`#!/bin/sh
+				echo "Fake good htgettoken"
+				exit 0
+				`)
+				scriptPath := path.Join(temp, "htgettoken")
+				if err := os.WriteFile(scriptPath, fakeHtgettokenScript, 0755); err != nil {
+					t.Fatal("Failed to write test script ", err)
+				}
+				exeMap["htgettoken"] = scriptPath
+				cleanupFunc := func() {
+					if !ok {
+						delete(exeMap, "htgettoken")
+					}
+					exeMap["htgettoken"] = oldExePath
+				}
+				return h, cleanupFunc
+			},
+			nil,
+			"failed to parse token",
+		},
+		{
+			"error parsing token outFile - valid JWT but not a SciToken (invalid scope)",
+			func(t *testing.T) context.Context { return context.Background() },
+			func(t *testing.T) (*htgettokenClient, func()) {
+				temp := t.TempDir()
+				// Set up our fake token
+				fakeTokenContent := fakeBadScitokenBadScope
+				fakeTokenPath := path.Join(temp, "faketoken")
+				if err := os.WriteFile(fakeTokenPath, fakeTokenContent, 0644); err != nil {
+					t.Fatal("Failed to write fake token file ", err)
+				}
+
+				// Point our htgettokenClient at the fake token
+				h := &htgettokenClient{
+					outFile: fakeTokenPath,
+				}
+
+				// Auth func returns a nil error, but htgettoken command fails
+				h.auth = func(context.Context) (cleanupFunc func(), err error) {
+					return nil, nil
+				}
+				// Set up a script that simulates a working htgettoken command, and put it in exeMap so
+				// that the htgettokenClient.getToken will use it
+				oldExePath, ok := exeMap["htgettoken"]
+				fakeHtgettokenScript := []byte(`#!/bin/sh
+				echo "Fake good htgettoken"
+				exit 0
+				`)
+				scriptPath := path.Join(temp, "htgettoken")
+				if err := os.WriteFile(scriptPath, fakeHtgettokenScript, 0755); err != nil {
+					t.Fatal("Failed to write test script ", err)
+				}
+				exeMap["htgettoken"] = scriptPath
+				cleanupFunc := func() {
+					if !ok {
+						delete(exeMap, "htgettoken")
+					}
+					exeMap["htgettoken"] = oldExePath
+				}
+				return h, cleanupFunc
+			},
+			nil,
+			scitokens.ScopeParseError.Error(),
+		},
 	}
 
 	for _, test := range testCases {
@@ -549,5 +636,7 @@ func TestGetToken(t *testing.T) {
 			assert.Equal(t, test.expectedToken, token, "token should match expected value")
 		})
 	}
-
 }
+
+// demo.scitokens.org
+var fakeBadScitokenBadScope = []byte(`eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS1yczI1NiIsInR5cCI6IkpXVCJ9.eyJ2ZXIiOiJzY2l0b2tlbjoyLjAiLCJhdWQiOiJodHRwczovL2RlbW8uc2NpdG9rZW5zLm9yZyIsImlzcyI6Imh0dHBzOi8vZGVtby5zY2l0b2tlbnMub3JnIiwiZXhwIjo3OTU2ODQzNzQyLCJpYXQiOjE3NTI2MzQ5MTMsIm5iZiI6MTc1MjYzNDkxMywianRpIjoiYWRkNWZhNzMtMjNjZi00OGZlLWIxYmUtODViMzkxMmEyZDFkIiwic2NvcGUiOjEyMzQ1fQ.aneeQhxM7NThByaNcUaOpq93qEEeCrvAYo_rQFRIvZLzymP42tri9QYeUycCMz7AVJoRAPHBxDtY-Z_WDb52zbqskzq9zhwUiRREXJakHbROviMag8A6Hc7K8U95DNU4qz8fpVXiBgIiGOPM6T838CVPZNGFQ0KpyzbyMXvx6HRh_d2x1fhulBzcgmNVlB_oiWrI4qgmRlgpn5pwrjAkRLmHlvFL0OAUEeV4zuptFqUnR9vZe2yBL-ZFxH9_sTjxScOz8kP9mol_2spOh0eqPe2JuVVzVG0GDUydTqDHIPqi_6MTFUNp9EuDmarskm82Wti-pwWIGSLdRlLI68anKQ`)

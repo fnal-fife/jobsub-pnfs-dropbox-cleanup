@@ -3,12 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -307,8 +310,7 @@ func TestWithKerberosKeytabAuth(t *testing.T) {
 			func(t *testing.T) func() {
 				oldPath := os.Getenv("PATH")
 				temp := t.TempDir()
-				script := []byte(`
-				#!/bin/sh
+				script := []byte(`#!/bin/sh
 				echo "Fake bad kinit"
 				exit 1
 				`)
@@ -331,8 +333,7 @@ func TestWithKerberosKeytabAuth(t *testing.T) {
 			func(t *testing.T) func() {
 				oldPath := os.Getenv("PATH")
 				temp := t.TempDir()
-				script := []byte(`
-				#!/bin/sh
+				script := []byte(`#!/bin/sh
 				echo "Fake good kinit"
 				exit 0
 				`)
@@ -394,4 +395,159 @@ func TestWithKerberosKeytabAuth(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Cases:
+// 6. error parsing token (e.g. not a valid JWT)
+// 7. error creating SciToken from token file
+// 8. error validating SciToken file
+// 9. error validating token (e.g. not a valid SciToken)
+// 10. successful token retrieval and validation
+func TestGetToken(t *testing.T) {
+	type testCase struct {
+		description         string
+		ctxFunc             func(t *testing.T) context.Context
+		setupFunc           func(*testing.T) (h *htgettokenClient, cleanupFunc func()) // returns a cleanup function that the test should call at its end
+		expectedToken       []byte
+		expectedErrContains string
+	}
+
+	testCases := []testCase{
+		{
+			"context deadline exceeded before getting token",
+			func(t *testing.T) context.Context {
+				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+				t.Cleanup(cancel) // Ensure we cancel the context after the test
+				return ctx
+			},
+			nil,
+			nil,
+			"context deadline exceeded before getting token",
+		},
+		{
+			"context canceled before getting token",
+			func(t *testing.T) context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel() // Cancel the context immediately
+				return ctx
+			},
+			nil,
+			nil,
+			"context canceled before getting token",
+		},
+		{
+			"error setting up authentication for htgettoken",
+			func(t *testing.T) context.Context { return context.Background() },
+			func(t *testing.T) (*htgettokenClient, func()) {
+				h := &htgettokenClient{}
+				// Auth func returns a non-nil error
+				h.auth = func(context.Context) (cleanupFunc func(), err error) {
+					return nil, fmt.Errorf("fake error")
+				}
+				return h, nil
+			},
+			nil,
+			"error setting up authentication for htgettoken: fake error",
+		},
+		{
+			"error running htgettoken command",
+			func(t *testing.T) context.Context { return context.Background() },
+			func(t *testing.T) (*htgettokenClient, func()) {
+				h := &htgettokenClient{}
+				// Auth func returns a nil error, but htgettoken command fails
+				h.auth = func(context.Context) (cleanupFunc func(), err error) {
+					return nil, nil
+				}
+				// Set up a script that simulates a failing htgettoken command, and put it in exeMap so
+				// that the htgettokenClient.getToken will use it
+				oldExePath, ok := exeMap["htgettoken"]
+				temp := t.TempDir()
+				fakeHtgettokenScript := []byte(`#!/bin/sh
+				echo "Fake bad htgettoken"
+				exit 1
+				`)
+				scriptPath := path.Join(temp, "htgettoken")
+				if err := os.WriteFile(scriptPath, fakeHtgettokenScript, 0755); err != nil {
+					t.Fatal("Failed to write test script ", err)
+				}
+				exeMap["htgettoken"] = scriptPath
+				cleanupFunc := func() {
+					if !ok {
+						delete(exeMap, "htgettoken")
+					}
+					exeMap["htgettoken"] = oldExePath
+				}
+				return h, cleanupFunc
+			},
+			nil,
+			"error running htgettoken to obtain bearer token",
+		},
+		{
+			"error reading token outFile",
+			func(t *testing.T) context.Context { return context.Background() },
+			func(t *testing.T) (*htgettokenClient, func()) {
+				temp := t.TempDir()
+				// Set up our fake token
+				fakeTokenContent := []byte("fake token content")
+				fakeTokenPath := path.Join(temp, "faketoken")
+				if err := os.WriteFile(fakeTokenPath, fakeTokenContent, 0644); err != nil {
+					t.Fatal("Failed to write fake token file ", err)
+				}
+				os.Chmod(fakeTokenPath, 0000) // Make our fake token unreadable
+
+				// Point our htgettokenClient at the fake token
+				h := &htgettokenClient{
+					outFile: fakeTokenPath,
+				}
+
+				// Auth func returns a nil error, but htgettoken command fails
+				h.auth = func(context.Context) (cleanupFunc func(), err error) {
+					return nil, nil
+				}
+				// Set up a script that simulates a working htgettoken command, and put it in exeMap so
+				// that the htgettokenClient.getToken will use it
+				oldExePath, ok := exeMap["htgettoken"]
+				fakeHtgettokenScript := []byte(`#!/bin/sh
+				echo "Fake good htgettoken"
+				exit 0
+				`)
+				scriptPath := path.Join(temp, "htgettoken")
+				if err := os.WriteFile(scriptPath, fakeHtgettokenScript, 0755); err != nil {
+					t.Fatal("Failed to write test script ", err)
+				}
+				exeMap["htgettoken"] = scriptPath
+				cleanupFunc := func() {
+					if !ok {
+						delete(exeMap, "htgettoken")
+					}
+					exeMap["htgettoken"] = oldExePath
+				}
+				return h, cleanupFunc
+			},
+			nil,
+			fs.ErrPermission.Error(),
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.description, func(t *testing.T) {
+			var client *htgettokenClient
+			var cleanupFunc func()
+			ctx := test.ctxFunc(t)
+			if test.setupFunc != nil {
+				client, cleanupFunc = test.setupFunc(t)
+				if cleanupFunc != nil {
+					defer cleanupFunc()
+				}
+			}
+			token, err := client.getToken(ctx, "", "")
+			if err != nil {
+				assert.ErrorContains(t, err, test.expectedErrContains)
+				assert.Nil(t, token, "token should be nil when there is an error")
+				return
+			}
+			assert.Equal(t, test.expectedToken, token, "token should match expected value")
+		})
+	}
+
 }

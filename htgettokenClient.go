@@ -236,7 +236,7 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 	}
 
 	// Validate the token
-	err = enf.Validate(st)
+	err = enf.Validate(st, scitokens.WithGroup(issuer), scitokens.WithGroup(fmt.Sprintf("/%s/%s", issuer, role)))
 	if err != nil {
 		funcLogger.Error("error validating SciToken file", "tokenfile", h.outFile, "error", err)
 		return nil, fmt.Errorf("%s: %w", errValidateMsg, err)

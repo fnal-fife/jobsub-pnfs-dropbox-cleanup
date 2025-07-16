@@ -403,6 +403,24 @@ func TestWithKerberosKeytabAuth(t *testing.T) {
 // 9. error validating token (e.g. not a valid SciToken)
 // 10. successful token retrieval and validation
 func TestGetToken(t *testing.T) {
+	getGoodSciToken := func() []byte {
+		bytes, err := os.ReadFile("testTokens/goodToken")
+		if err != nil {
+			t.Fatalf("Failed to read good SciToken: %v", err)
+		}
+		return bytes
+	}
+
+	noopAuthFunc := func(context.Context) (func(), error) { return nil, nil }
+
+	newHtgettokenClientForTests := func(outFile string) *htgettokenClient {
+		h := &htgettokenClient{
+			outFile: outFile,
+			auth:    noopAuthFunc, // Use a no-op auth function for this test
+		}
+		return h
+	}
+
 	type testCase struct {
 		description         string
 		ctxFunc             func(t *testing.T) context.Context
@@ -614,6 +632,28 @@ func TestGetToken(t *testing.T) {
 			nil,
 			scitokens.ScopeParseError.Error(),
 		},
+		{
+			"error parsing token outFile - valid JWT but bad groups",
+			func(t *testing.T) context.Context { return context.Background() },
+			func(t *testing.T) (*htgettokenClient, func()) {
+				h := newHtgettokenClientForTests(path.Join("testTokens", "badToken_InvalidGroups")) // Point our htgettokenClient at the fake token
+				cleanupExeFunc := writeGoodHtgettokenScript(t)                                      // Mock our good htgettoken script
+				return h, cleanupExeFunc
+			},
+			nil,
+			"token invalid",
+		},
+		{
+			"Successful retrieval and validation of token",
+			func(t *testing.T) context.Context { return context.Background() },
+			func(t *testing.T) (*htgettokenClient, func()) {
+				h := newHtgettokenClientForTests(path.Join("testTokens", "goodToken")) // Point our htgettokenClient at the fake token
+				cleanupExeFunc := writeGoodHtgettokenScript(t)                         // Mock our good htgettoken script
+				return h, cleanupExeFunc
+			},
+			getGoodSciToken(),
+			"",
+		},
 	}
 
 	for _, test := range testCases {
@@ -627,7 +667,7 @@ func TestGetToken(t *testing.T) {
 					defer cleanupFunc()
 				}
 			}
-			token, err := client.getToken(ctx, "", "")
+			token, err := client.getToken(ctx, "testissuer", "testrole")
 			if err != nil {
 				assert.ErrorContains(t, err, test.expectedErrContains)
 				assert.Nil(t, token, "token should be nil when there is an error")
@@ -638,5 +678,28 @@ func TestGetToken(t *testing.T) {
 	}
 }
 
-// demo.scitokens.org
-var fakeBadScitokenBadScope = []byte(`eyJhbGciOiJSUzI1NiIsImtpZCI6ImtleS1yczI1NiIsInR5cCI6IkpXVCJ9.eyJ2ZXIiOiJzY2l0b2tlbjoyLjAiLCJhdWQiOiJodHRwczovL2RlbW8uc2NpdG9rZW5zLm9yZyIsImlzcyI6Imh0dHBzOi8vZGVtby5zY2l0b2tlbnMub3JnIiwiZXhwIjo3OTU2ODQzNzQyLCJpYXQiOjE3NTI2MzQ5MTMsIm5iZiI6MTc1MjYzNDkxMywianRpIjoiYWRkNWZhNzMtMjNjZi00OGZlLWIxYmUtODViMzkxMmEyZDFkIiwic2NvcGUiOjEyMzQ1fQ.aneeQhxM7NThByaNcUaOpq93qEEeCrvAYo_rQFRIvZLzymP42tri9QYeUycCMz7AVJoRAPHBxDtY-Z_WDb52zbqskzq9zhwUiRREXJakHbROviMag8A6Hc7K8U95DNU4qz8fpVXiBgIiGOPM6T838CVPZNGFQ0KpyzbyMXvx6HRh_d2x1fhulBzcgmNVlB_oiWrI4qgmRlgpn5pwrjAkRLmHlvFL0OAUEeV4zuptFqUnR9vZe2yBL-ZFxH9_sTjxScOz8kP9mol_2spOh0eqPe2JuVVzVG0GDUydTqDHIPqi_6MTFUNp9EuDmarskm82Wti-pwWIGSLdRlLI68anKQ`)
+// writeGoodHtgettokenScript sets up a script that simulates a working htgettoken command, and puts it in exeMap so
+// that htgettokenClient.getToken will use it.  It returns a cleanup function that should be called at the end of the
+// test to restore the original htgettoken executable path.
+func writeGoodHtgettokenScript(t *testing.T) (cleanupFunc func()) {
+	t.Helper()
+	oldExePath, ok := exeMap["htgettoken"]
+	cleanupFunc = func() {
+		if !ok {
+			delete(exeMap, "htgettoken")
+		}
+		exeMap["htgettoken"] = oldExePath
+	}
+
+	fakeHtgettokenScript := []byte(`#!/bin/sh
+				echo "Fake good htgettoken"
+				exit 0
+				`)
+	temp := t.TempDir()
+	scriptPath := path.Join(temp, "htgettoken")
+	if err := os.WriteFile(scriptPath, fakeHtgettokenScript, 0755); err != nil {
+		t.Fatal("Failed to write test script ", err)
+	}
+	exeMap["htgettoken"] = scriptPath
+	return cleanupFunc
+}

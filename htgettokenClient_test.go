@@ -548,42 +548,9 @@ func TestGetToken(t *testing.T) {
 			"error parsing token outFile - not a valid JWT",
 			func(t *testing.T) context.Context { return context.Background() },
 			func(t *testing.T) (*htgettokenClient, func()) {
-				temp := t.TempDir()
-				// Set up our fake token
-				fakeTokenContent := []byte("fake token content")
-				fakeTokenPath := path.Join(temp, "faketoken")
-				if err := os.WriteFile(fakeTokenPath, fakeTokenContent, 0644); err != nil {
-					t.Fatal("Failed to write fake token file ", err)
-				}
-
-				// Point our htgettokenClient at the fake token
-				h := &htgettokenClient{
-					outFile: fakeTokenPath,
-				}
-
-				// Auth func returns a nil error, but htgettoken command fails
-				h.auth = func(context.Context) (cleanupFunc func(), err error) {
-					return nil, nil
-				}
-				// Set up a script that simulates a working htgettoken command, and put it in exeMap so
-				// that the htgettokenClient.getToken will use it
-				oldExePath, ok := exeMap["htgettoken"]
-				fakeHtgettokenScript := []byte(`#!/bin/sh
-				echo "Fake good htgettoken"
-				exit 0
-				`)
-				scriptPath := path.Join(temp, "htgettoken")
-				if err := os.WriteFile(scriptPath, fakeHtgettokenScript, 0755); err != nil {
-					t.Fatal("Failed to write test script ", err)
-				}
-				exeMap["htgettoken"] = scriptPath
-				cleanupFunc := func() {
-					if !ok {
-						delete(exeMap, "htgettoken")
-					}
-					exeMap["htgettoken"] = oldExePath
-				}
-				return h, cleanupFunc
+				h := newHtgettokenClientForTests(path.Join("testTokens", "badToken_InvalidJWT")) // Point our htgettokenClient at the fake token
+				cleanupExeFunc := writeGoodHtgettokenScript(t)                                   // Mock our good htgettoken script
+				return h, cleanupExeFunc
 			},
 			nil,
 			"failed to parse token",
@@ -592,42 +559,9 @@ func TestGetToken(t *testing.T) {
 			"error parsing token outFile - valid JWT but not a SciToken (invalid scope)",
 			func(t *testing.T) context.Context { return context.Background() },
 			func(t *testing.T) (*htgettokenClient, func()) {
-				temp := t.TempDir()
-				// Set up our fake token
-				fakeTokenContent := fakeBadScitokenBadScope
-				fakeTokenPath := path.Join(temp, "faketoken")
-				if err := os.WriteFile(fakeTokenPath, fakeTokenContent, 0644); err != nil {
-					t.Fatal("Failed to write fake token file ", err)
-				}
-
-				// Point our htgettokenClient at the fake token
-				h := &htgettokenClient{
-					outFile: fakeTokenPath,
-				}
-
-				// Auth func returns a nil error, but htgettoken command fails
-				h.auth = func(context.Context) (cleanupFunc func(), err error) {
-					return nil, nil
-				}
-				// Set up a script that simulates a working htgettoken command, and put it in exeMap so
-				// that the htgettokenClient.getToken will use it
-				oldExePath, ok := exeMap["htgettoken"]
-				fakeHtgettokenScript := []byte(`#!/bin/sh
-				echo "Fake good htgettoken"
-				exit 0
-				`)
-				scriptPath := path.Join(temp, "htgettoken")
-				if err := os.WriteFile(scriptPath, fakeHtgettokenScript, 0755); err != nil {
-					t.Fatal("Failed to write test script ", err)
-				}
-				exeMap["htgettoken"] = scriptPath
-				cleanupFunc := func() {
-					if !ok {
-						delete(exeMap, "htgettoken")
-					}
-					exeMap["htgettoken"] = oldExePath
-				}
-				return h, cleanupFunc
+				h := newHtgettokenClientForTests(path.Join("testTokens", "badToken_badScope")) // Point our htgettokenClient at the fake token
+				cleanupExeFunc := writeGoodHtgettokenScript(t)                                 // Mock our good htgettoken script
+				return h, cleanupExeFunc
 			},
 			nil,
 			scitokens.ScopeParseError.Error(),

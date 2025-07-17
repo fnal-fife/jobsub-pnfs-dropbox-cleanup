@@ -41,13 +41,19 @@ func init() {
 	metricsRegistry.MustRegister(getBearerTokenDuration)
 }
 
+// htgettokenClient is a client for interacting with the htgettoken command-line tool.
 type htgettokenClient struct {
-	vaultServer    string
+	// vaultServer is the Vault server URL to use for authentication.
+	vaultServer string
+	// vaultTokenFile is the path to the file that contains the vault token used to authorize vault operations
 	vaultTokenFile string
-	outFile        string
-	options        []string
-	debug          bool     // Whether to enable debug mode for htgettoken
-	auth           authFunc // Function that sets up authorization for client
+	// outFile is the path where a bearer token will be written to. If the file does not exist, it will be created.
+	outFile string
+	// options to pass to the HTGETTOKENOPTS environment variable
+	options []string
+	debug   bool // Whether to enable debug mode for htgettoken
+	// auth is an authFunc that sets up the authentication for the client.
+	auth authFunc
 }
 
 // newHtgettokenClient creates a new htgettokenClient instance. It will check that vaultTokenFile exists and is readable.
@@ -82,6 +88,8 @@ func (h *htgettokenClient) withDebug() *htgettokenClient {
 	return h
 }
 
+// authFunc is a function type that sets up authentication/authorization for the htgettokenClient. It returns a cleanup function that can be called
+// after htgettokenClient operations are finished
 type authFunc func(ctx context.Context) (cleanupFunc func(), err error)
 
 func (h *htgettokenClient) withAuthFunc(a authFunc) *htgettokenClient {
@@ -90,6 +98,7 @@ func (h *htgettokenClient) withAuthFunc(a authFunc) *htgettokenClient {
 	return h
 }
 
+// withKerberosKeytabAuth sets up Kerberos authentication for the htgettokenClient
 func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) *htgettokenClient {
 	funcLogger := logger.With("caller", "htgettokenClient.withKerberosKeytabAuth")
 	f := func(ctx context.Context) (cleanup func(), err error) {
@@ -246,6 +255,8 @@ func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([
 	return tok, nil
 }
 
+// prepareHtgettokenopts processes the options for htgettoken, ensuring they are in the correct format for use
+// by the htgettokenClient
 func prepareHtgettokenopts(options []string) []string {
 	finalOpts := make([]string, 0)
 
@@ -290,6 +301,7 @@ func prepareHtgettokenopts(options []string) []string {
 	return finalOpts
 }
 
+// mergeHtgettokenopts merges the HTGETTOKENOPTS environment variable with the provided options.
 func mergeHtgettokenopts(env []string, options []string) []string {
 	dropEmptyStringFromSlice := func(s []string) []string {
 		return slices.DeleteFunc(s, func(s2 string) bool { return s2 == "" })

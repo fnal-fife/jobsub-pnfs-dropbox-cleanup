@@ -80,6 +80,7 @@ func init() {
 	metricsRegistry.MustRegister(getPNFSJobsForExperimentDuration)
 }
 
+// getCondorSchedds queries the Condor pool for its schedds, using the constraint to filter the query results.
 func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSchedd, error) {
 	funcLogger := logger.With("caller", "getCondorSchedds")
 	start := time.Now()
@@ -106,16 +107,22 @@ func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSc
 	return schedds, nil
 }
 
+// condorSchedd represents a Condor schedd along with relevant authentication methods and environment variables
+// for interactivng with the schedd
 type condorSchedd struct {
 	name       string
 	cmdEnv     []string // place to store things like BEARER_TOKEN_FILE for condor commands
 	authMethod []condorAuthMethod
 }
 
+// verify checks if the condor authentication method is supported by the client configuration and performs the necessary verification.
 func (c *condorSchedd) verify(ctx context.Context, a condorAuthMethod) error {
 	return a.verify(ctx, c)
 }
 
+// getPNFSJobsForExperiment queries the condorSchedd for jobs with the classad "PNFS_INPUT_FILES" defined,
+// that are associated with the specified experiment that match the provided constraint. It returns a slice of
+// ClassAd objects representing the jobs that use PNFS, or an error if the query or parsing fails.
 func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment string, constraint string) ([]classad.ClassAd, error) {
 	start := time.Now()
 	funcLogger := logger.With("caller", "getPNFSJobsForExperiment")
@@ -140,6 +147,7 @@ func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment 
 	return ads, nil
 }
 
+// getDropboxFilesFromJob extracts the list of PNFS dropbox files from a job ClassAd
 func (c *condorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, error) {
 	stringAd := jobAd.Strings()
 
@@ -159,6 +167,7 @@ func (c *condorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, 
 
 }
 
+// buildConstraint constructs a condor constraint based on the given experiment and constraint string
 func buildConstraint(experiment string, constraint string) string {
 	exptConstraint := "Jobsub_Group==\"" + experiment + "\""
 	if constraint == "" {

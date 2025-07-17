@@ -148,7 +148,7 @@ func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment 
 }
 
 // getDropboxFilesFromJob extracts the list of PNFS dropbox files from a job ClassAd
-func (c *condorSchedd) getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, error) {
+func getDropboxFilesFromJob(jobAd classad.ClassAd) ([]string, error) {
 	stringAd := jobAd.Strings()
 
 	attribute := "PNFS_INPUT_FILES"

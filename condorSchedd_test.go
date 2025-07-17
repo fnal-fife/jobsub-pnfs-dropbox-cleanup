@@ -46,8 +46,7 @@ func TestCondorScheddGetDropboxFilesFromJob(t *testing.T) {
 		t.Run(
 			test.description,
 			func(t *testing.T) {
-				mySchedd := new(condorSchedd)
-				files, err := mySchedd.getDropboxFilesFromJob(test.job)
+				files, err := getDropboxFilesFromJob(test.job)
 				assert.ErrorIs(t, err, test.expectedErr)
 				assert.Equal(t, test.expectedFiles, files)
 			},

@@ -89,7 +89,7 @@ func getScheddFiles(ctx context.Context, sch *condorSchedd, authMethod condorAut
 	}
 
 	for _, ad := range ads {
-		files, err := sch.getDropboxFilesFromJob(ad)
+		files, err := getDropboxFilesFromJob(ad)
 		if err != nil {
 			funcLogger.Error("error getting dropbox files from job:", "error", err, "schedd", sch.name, "jobId", fmt.Sprintf("%s.%s", ad["ClusterId"], ad["ProcId"])) // TODO Get job ID?
 			continue

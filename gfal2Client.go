@@ -225,6 +225,12 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 	return dirContents, nil
 }
 
+// fileListingToFileEntry parses a line from the `gfal-ls` output and returns a FileEntry object.
+// The line should be in the format:
+// -rwxrwxrwx   0 0     0            50 Sep 26 14:55 bogus_file.out
+// or for directories:
+// drwxrwxrwx   0 0     0             0 Apr  6  2023 bogus_dir
+// It returns an error if the line cannot be parsed correctly.
 func (g *gfal2Client) fileListingToFileEntry(line string, filenameTransformFunc func(string) string) (*FileEntry, error) {
 	// File entries will look like this:
 	// -rwxrwxrwx   0 0     0            50 Sep 26 14:55 bogus_file.out
@@ -253,6 +259,7 @@ func (g *gfal2Client) fileListingToFileEntry(line string, filenameTransformFunc 
 	return f, nil
 }
 
+// parsePermsToDirectoryFlag checks the permissions string and returns true if it indicates a directory
 func (g *gfal2Client) parsePermsToDirectoryFlag(perms string) (bool, error) {
 	if len(perms) != 10 {
 		return false, errMalformedPerms
@@ -269,6 +276,8 @@ func (g *gfal2Client) parsePermsToDirectoryFlag(perms string) (bool, error) {
 	return false, nil
 }
 
+// parseDateStampToTime parses a date string as returned by gfal-ls (in the format "Jan  2 15:04" or "Jan 2 2006")
+// and returns a time.Time object.
 func (g *gfal2Client) parseDateStampToTime(dateString string) (time.Time, error) {
 	var rawDateStamp time.Time
 	var err error
@@ -326,6 +335,7 @@ var (
 	errFileCountLimitExceeded = errors.New("file parse limit exceeded")
 )
 
+// errProcessingFiles is an error type that holds a slice of errors encountered while processing files.
 type errProcessingFiles struct {
 	errors []error
 }

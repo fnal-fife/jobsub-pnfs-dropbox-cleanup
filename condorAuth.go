@@ -15,6 +15,7 @@ import (
 	"time"
 )
 
+// condorAuthMethod represents the client authentication method used to interact with a Condor schedd.
 type condorAuthMethod int
 
 const (
@@ -51,6 +52,7 @@ func newCondorAuthMethod(s string) condorAuthMethod {
 	}
 }
 
+// verify checks if the condor authentication method is supported and performs the necessary verification.
 func (a condorAuthMethod) verify(ctx context.Context, c *condorSchedd) error {
 	switch a {
 	case FS:
@@ -84,7 +86,8 @@ func (a condorAuthMethod) setupEnv() (cleanupFunc func()) {
 	}
 }
 
-// Set environment so we can use IDTOKENS for authentication.  Returns a function to restore the old environment after execution
+// setupIDTOKENEnvironment sets the environment so we can use IDTOKENS for authentication.
+// It returns a function to restore the old environment after execution
 func setupIDTOKENEnvironment() (cleanupFunc func()) {
 	funcLogger := logger.With("caller", "setupIDTOKENEnvironment")
 	var oldSECClientAuthenticationMethods string
@@ -193,6 +196,9 @@ func idTokenAuth(ctx context.Context, c *condorSchedd) error {
 	return nil
 }
 
+// checkForClientAuthMethod checks if the specified condorAuthMethod is present in the
+// list of client authentication methods configured in the Condor client configuration or supported
+// Condor environment variables.
 func checkForClientAuthMethod(ctx context.Context, m condorAuthMethod) bool {
 	funcLogger := logger.With("caller", "checkForClientAuthMethod")
 	checkCmd := exec.CommandContext(ctx, exeMap["condor_config_val"], "SEC_CLIENT_AUTHENTICATION_METHODS")

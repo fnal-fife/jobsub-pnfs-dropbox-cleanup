@@ -47,6 +47,7 @@ func newDCacheClient(token string, skipTlsVerify bool) *dCacheClient {
 	}
 }
 
+// removeFile deletes a file from dCache using the HTTP DELETE method.
 func (d *dCacheClient) removeFile(ctx context.Context, urlPath string) error {
 	start := time.Now()
 	funcLogger := logger.With("caller", "dCacheClient.removeFile")

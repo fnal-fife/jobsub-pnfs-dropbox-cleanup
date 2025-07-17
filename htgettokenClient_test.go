@@ -404,7 +404,7 @@ func TestWithKerberosKeytabAuth(t *testing.T) {
 // 10. successful token retrieval and validation
 func TestGetToken(t *testing.T) {
 	getGoodSciToken := func() []byte {
-		bytes, err := os.ReadFile("testTokens/goodToken")
+		bytes, err := os.ReadFile("testData/testTokens/goodToken")
 		if err != nil {
 			t.Fatalf("Failed to read good SciToken: %v", err)
 		}
@@ -500,8 +500,8 @@ func TestGetToken(t *testing.T) {
 			"error parsing token outFile - not a valid JWT",
 			func(t *testing.T) context.Context { return context.Background() },
 			func(t *testing.T) (*htgettokenClient, func()) {
-				h := newHtgettokenClientForTests(path.Join("testTokens", "badToken_InvalidJWT")) // Point our htgettokenClient at the fake token
-				cleanupExeFunc := writeHtgettokenTestScript(t, 0)                                // Mock our good htgettoken script
+				h := newHtgettokenClientForTests(path.Join("testData", "testTokens", "badToken_InvalidJWT")) // Point our htgettokenClient at the fake token
+				cleanupExeFunc := writeHtgettokenTestScript(t, 0)                                            // Mock our good htgettoken script
 				return h, cleanupExeFunc
 			},
 			nil,
@@ -511,8 +511,8 @@ func TestGetToken(t *testing.T) {
 			"error parsing token outFile - valid JWT but not a SciToken (invalid scope)",
 			func(t *testing.T) context.Context { return context.Background() },
 			func(t *testing.T) (*htgettokenClient, func()) {
-				h := newHtgettokenClientForTests(path.Join("testTokens", "badToken_badScope")) // Point our htgettokenClient at the fake token
-				cleanupExeFunc := writeHtgettokenTestScript(t, 0)                              // Mock our good htgettoken script
+				h := newHtgettokenClientForTests(path.Join("testData", "testTokens", "badToken_badScope")) // Point our htgettokenClient at the fake token
+				cleanupExeFunc := writeHtgettokenTestScript(t, 0)                                          // Mock our good htgettoken script
 				return h, cleanupExeFunc
 			},
 			nil,
@@ -522,8 +522,8 @@ func TestGetToken(t *testing.T) {
 			"error parsing token outFile - valid JWT but bad groups",
 			func(t *testing.T) context.Context { return context.Background() },
 			func(t *testing.T) (*htgettokenClient, func()) {
-				h := newHtgettokenClientForTests(path.Join("testTokens", "badToken_InvalidGroups")) // Point our htgettokenClient at the fake token
-				cleanupExeFunc := writeHtgettokenTestScript(t, 0)                                   // Mock our good htgettoken script
+				h := newHtgettokenClientForTests(path.Join("testData", "testTokens", "badToken_InvalidGroups")) // Point our htgettokenClient at the fake token
+				cleanupExeFunc := writeHtgettokenTestScript(t, 0)                                               // Mock our good htgettoken script
 				return h, cleanupExeFunc
 			},
 			nil,
@@ -533,8 +533,8 @@ func TestGetToken(t *testing.T) {
 			"Successful retrieval and validation of token",
 			func(t *testing.T) context.Context { return context.Background() },
 			func(t *testing.T) (*htgettokenClient, func()) {
-				h := newHtgettokenClientForTests(path.Join("testTokens", "goodToken")) // Point our htgettokenClient at the fake token
-				cleanupExeFunc := writeHtgettokenTestScript(t, 0)                      // Mock our good htgettoken script
+				h := newHtgettokenClientForTests(path.Join("testData", "testTokens", "goodToken")) // Point our htgettokenClient at the fake token
+				cleanupExeFunc := writeHtgettokenTestScript(t, 0)                                  // Mock our good htgettoken script
 				return h, cleanupExeFunc
 			},
 			getGoodSciToken(),

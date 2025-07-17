@@ -61,10 +61,26 @@ func TestSetupIDTOKENEnvironment(t *testing.T) {
 	}
 }
 
-// Assumes condor_config_val is available in the PATH
 func TestIdTokenAuth(t *testing.T) {
 	ctx := context.Background()
 	c := &condorSchedd{name: "test_schedd"}
+
+	// Fake condor_config_val
+	if oldPath, ok := exeMap["condor_config_val"]; ok {
+		defer func() {
+			exeMap["condor_config_val"] = oldPath // Restore original path
+		}()
+	}
+	tmpDir := t.TempDir()
+	fakeCondorConfigVal := filepath.Join(tmpDir, "condor_config_val")
+	exeMap["condor_config_val"] = fakeCondorConfigVal
+	condorConfigValScript := `#!/bin/sh
+	   echo $_condor_SEC_CLIENT_AUTHENTICATION_METHODS
+	   exit 0
+	`
+	if err := os.WriteFile(fakeCondorConfigVal, []byte(condorConfigValScript), 0o755); err != nil {
+		t.Fatalf("failed to write fake condor_config_val: %v", err)
+	}
 
 	type testCase struct {
 		description string
@@ -117,6 +133,11 @@ func TestIdTokenAuth(t *testing.T) {
 
 			},
 			errNoIDTokensFound,
+		},
+		{
+			"IDTOKENS set as auth method, token exists",
+			fakeGoodIDTokenAuthSetup,
+			nil,
 		},
 	}
 
@@ -211,4 +232,19 @@ func TestCheckForClientAuthMethod(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func fakeGoodIDTokenAuthSetup(t *testing.T) {
+	t.Helper()
+	t.Setenv("_condor_SEC_CLIENT_AUTHENTICATION_METHODS", "IDTOKENS")
+
+	// Simulate a home dir, and put a dummy token in the right place
+	homedir := t.TempDir()
+	os.MkdirAll(filepath.Join(homedir, ".condor", "tokens.d"), 0o755)
+	tokenFile := filepath.Join(homedir, ".condor", "tokens.d", "test_IDTOKEN")
+	err := os.WriteFile(tokenFile, []byte("test_token"), 0o644)
+	if err != nil {
+		t.Fatalf("failed to write test token file: %v", err)
+	}
+	t.Setenv("HOME", homedir)
 }

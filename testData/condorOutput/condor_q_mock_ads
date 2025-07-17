@@ -1,0 +1,13 @@
+Attr1 = "value1"
+Attr2 = "value2"
+IntAttr = 42
+PNFS_INPUT_FILES = "/pnfs/file1,/pnfs/file2,/pnfs/file3"
+
+Attr1 = "value1b"
+Attr2 = "value2b"
+IntAttr = 43
+PNFS_INPUT_FILES = "/pnfs/file1b,/pnfs/file2b,/pnfs/file3b"
+
+Attr1 = "value1c"
+Attr2 = "value2c"
+IntAttr = 44

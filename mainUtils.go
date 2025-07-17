@@ -13,6 +13,12 @@ import (
 	"time"
 )
 
+// getConfigFilePath attempts to locate the configuration file to use for the application.
+// It first checks if a specific config file path was provided via the configFileFlagVal argument.
+// If provided and the file exists, it returns that path.
+// If not, it iterates through the provided checkDirs slice, looking for a file named defaultConfigFileName
+// in each directory. If found, it returns the path to that file.
+// If the configuration file cannot be found in any of the specified locations, it returns the error errNoConfigFileFound.
 func getConfigFilePath(configFileFlagVal string, checkDirs []string) (string, error) {
 	// Check configFileFlag first
 	if configFileFlagVal != "" {
@@ -36,8 +42,11 @@ func getConfigFilePath(configFileFlagVal string, checkDirs []string) (string, er
 	return "", errNoConfigFileFound
 }
 
+// checkVaultTokenFile checks if the Vault token file at the specified location exists and is not older than the given age cutoff.
+// The ageCutoff parameter should be a duration string (e.g., "1h", "24h").
+// If the ageCutoff cannot be parsed, a default value is used.
+// Returns errNoVaultTokenFile if the file does not exist, errVaultTokenTooOld if the file is too old, or another error if an unexpected error occurs.
 func checkVaultTokenFile(location, ageCutoff string) error {
-	// vaultTokenAgeCutoff, err := time.ParseDuration(k.String("vault.vaultTokenAgeCutoff"))
 	funcLogger := logger.With("caller", "checkVaultTokenFile")
 	vaultTokenAgeCutoff, err := time.ParseDuration(ageCutoff)
 	if err != nil {
@@ -46,7 +55,6 @@ func checkVaultTokenFile(location, ageCutoff string) error {
 	}
 
 	// Is vault token file new enough?
-	// runLogger.Debug("Ensuring vault token is available, and new enough", "vaultTokenFile", k.String("vault.vaultTokenFile"), "vaultTokenAgeCutoff", vaultTokenAgeCutoff)
 	funcLogger.Debug("Ensuring vault token is available, and new enough", "vaultTokenFile", location, "vaultTokenAgeCutoff", ageCutoff)
 	stat, err := os.Stat(location)
 	if err != nil {
@@ -60,15 +68,18 @@ func checkVaultTokenFile(location, ageCutoff string) error {
 	}
 	return nil
 }
+
+// getScheddFiles retrieves the list of PNFS dropbox files associated with batch jobs for a given experiment
+// from a specified Condor schedd.  Returns a slice of file paths in PNFS or an error if any step fails.
 func getScheddFiles(ctx context.Context, sch *condorSchedd, authMethod condorAuthMethod, experiment string) ([]string, error) {
 	funcLogger := logger.With("caller", "getScheddFiles")
 	scheddFiles := make([]string, 0)
 	sch.cmdEnv = os.Environ()
 
-	funcLogger.Debug("Verifying authorization to condor schedd", "schedd", sch.name, "authMethod", authMethod)
+	funcLogger.Debug("Verifying authentication to condor schedd", "schedd", sch.name, "authMethod", authMethod)
 	err := sch.verify(ctx, authMethod)
 	if err != nil {
-		return nil, fmt.Errorf("error verifying authorization to condor schedd: %w", err)
+		return nil, fmt.Errorf("error verifying auth to condor schedd: %w", err)
 	}
 
 	funcLogger.Debug("Getting PNFS jobs for experiment", "experiment", experiment, "schedd", sch.name)
@@ -94,6 +105,9 @@ func stripPNFSFromPath(pnfsPath string) string {
 	return strings.TrimPrefix(pnfsPath, "/pnfs")
 }
 
+// PNFSToHTTPS converts a given PNFS file path to an HTTPS URL using the specified host and port.
+// The function applies a filename transformation function to the PNFS path before joining it to the base URL.
+// If the provided urlHostPort is invalid, it logs an error and returns an empty string.
 func PNFSToHTTPS(pnfsPath string, urlHostPort string, filenameTransformFunc func(string) string) string {
 	u, err := url.Parse(urlHostPort)
 	if err != nil {

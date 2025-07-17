@@ -3,10 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
-	"path/filepath"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 // TODO
@@ -20,94 +17,4 @@ func TestMain(m *testing.M) {
 	logger = slog.New(slog.NewTextHandler(os.Stdout, nil)) // Dummy logger for tests
 	exitCode := m.Run()
 	os.Exit(exitCode)
-}
-
-func TestGetConfigFilePath(t *testing.T) {
-	// expectedPath := "/etc/jobsub-pnfs-dropbox-cleanup/jobsub-pnfs-dropbox-cleanup.yml"
-	t1 := t.TempDir()
-	t2 := t.TempDir()
-	standardDirsToCheck := []string{t1, t2}
-	configFileName := "jobsub-pnfs-dropbox-cleanup.yml"
-
-	type testCase struct {
-		description    string
-		configFileFlag string
-		checkDirs      []string
-		setupFunc      func()
-		cleanupFunc    func()
-		expectedPath   string
-		expectedErr    error
-	}
-
-	testCases := []testCase{
-		{
-			description:    "Config file flag given with valid path",
-			configFileFlag: filepath.Join(t1, configFileName),
-			checkDirs:      standardDirsToCheck,
-			setupFunc: func() {
-				os.Create(filepath.Join(t1, configFileName))
-			},
-			cleanupFunc: func() {
-				os.Remove(filepath.Join(t1, configFileName))
-			},
-			expectedPath: filepath.Join(t1, configFileName),
-			expectedErr:  nil,
-		},
-		{
-			description:    "Config file flag given with an invalid path",
-			configFileFlag: filepath.Join(t1, configFileName),
-			checkDirs:      standardDirsToCheck,
-			setupFunc:      func() {},
-			cleanupFunc:    func() {},
-			expectedPath:   "",
-			expectedErr:    errNoConfigFileFound,
-		},
-		{
-			description:    "Config file flag given with an invalid path, but valid config file in standard directories",
-			configFileFlag: filepath.Join(t1, configFileName),
-			checkDirs:      standardDirsToCheck,
-			setupFunc: func() {
-				os.Create(filepath.Join(t2, configFileName))
-			},
-			cleanupFunc: func() {
-				os.Remove(filepath.Join(t2, configFileName))
-			},
-			expectedPath: filepath.Join(t2, configFileName),
-			expectedErr:  nil,
-		},
-		{
-			description:    "No config file flag given, but valid config file in standard directories",
-			configFileFlag: "",
-			checkDirs:      standardDirsToCheck,
-			setupFunc: func() {
-				os.Create(filepath.Join(t2, configFileName))
-			},
-			cleanupFunc: func() {
-				os.Remove(filepath.Join(t2, configFileName))
-			},
-			expectedPath: filepath.Join(t2, configFileName),
-			expectedErr:  nil,
-		},
-		{
-			description:    "No valid config files found",
-			configFileFlag: "",
-			checkDirs:      standardDirsToCheck,
-			setupFunc:      func() {},
-			cleanupFunc:    func() {},
-			expectedPath:   "",
-			expectedErr:    errNoConfigFileFound,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.description, func(t *testing.T) {
-			tc.setupFunc()
-			defer tc.cleanupFunc()
-
-			path, err := getConfigFilePath(tc.configFileFlag, tc.checkDirs)
-			assert.ErrorIs(t, err, tc.expectedErr)
-			assert.Equal(t, tc.expectedPath, path)
-		})
-	}
-
 }

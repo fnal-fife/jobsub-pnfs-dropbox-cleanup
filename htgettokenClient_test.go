@@ -564,7 +564,7 @@ func TestGetToken(t *testing.T) {
 	}
 }
 
-// writeGoodHtgettokenScript sets up a script that simulates a working htgettoken command, and puts it in exeMap so
+// writeHtgettokenScript sets up a script that simulates a working htgettoken command, and puts it in exeMap so
 // that htgettokenClient.getToken will use it.  It returns a cleanup function that should be called at the end of the
 // test to restore the original htgettoken executable path.
 func writeHtgettokenTestScript(t *testing.T, exitCode int) (cleanupFunc func()) {

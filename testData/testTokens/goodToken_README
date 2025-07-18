@@ -7,11 +7,11 @@ The decoded token looks like this:
   "aud": "https://demo.scitokens.org",
   "iss": "https://demo.scitokens.org",
   "wlcg.groups": [
-    "/testissuer",
-    "/testissuer/testrole"
+    "/testexperiment",
+    "/testexperiment/testrole"
   ],
   "exp": 7956886942,
-  "iat": 1752686489,
-  "nbf": 1752686489,
-  "jti": "aa7b2618-091d-4504-ad55-5ff6057a527d"
+  "iat": 1752863270,
+  "nbf": 1752863270,
+  "jti": "c21875dd-6d51-4e51-aff0-8e93b9cf63cd"
 }

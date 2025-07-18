@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// TODO NOTE: This will be deprecated when the dCache client is fully implemented
+// TODO NOTE: This will be deprecated when the dCache client is fully implemented.  Because of this, I won't bother now with mocking out gfal-ls command failure
 
 var lineRegex = regexp.MustCompile(`((?:\w|-)+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\w+\s+\d+\s+(?:(?:\d+:\d+)|\d+))\s+(.+)`)
 
@@ -73,7 +73,7 @@ func newGfal2Client(fileCountLimit int, retryCount uint, retrySleep time.Duratio
 		retrySleep:       defaultRetrySleep,
 	}
 
-	if retryCount > 0 {
+	if retryCount >= 0 {
 		c.retryCount = retryCount
 	}
 
@@ -121,7 +121,7 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 	// gfal-ls -l <source>
 	var stdoutStderr []byte
 	var err error
-	for i := 0; i < int(g.retryCount); i++ {
+	for i := 0; i <= int(g.retryCount); i++ {
 		c := exec.CommandContext(ctx, "gfal-ls", cmdArgs...)
 		c.Env = environ
 

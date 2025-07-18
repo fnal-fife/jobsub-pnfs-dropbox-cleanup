@@ -189,7 +189,7 @@ func main() {
 		switch {
 		// All the OK cases: exit 0
 		case errors.Is(err, errNoFilesInDropbox), errors.Is(err, errNoFilesToDelete):
-			funcLogger.Info(err.Error())
+			funcLogger.With("experiment", k.String("experiment")).Info(err.Error())
 			exitCode = 0
 		// Other cases
 		case errors.Is(err, errUsage):
@@ -205,7 +205,7 @@ func main() {
 			funcLogger.Error(errMsg + "No condor schedds were queried successfully. Please check your condor pool configuration or this script's configuration")
 			exitCode = 4
 		default:
-			funcLogger.Error(errMsg + err.Error())
+			funcLogger.With("experiment", k.String("experiment")).Error(errMsg + err.Error())
 			exitCode = 1
 		}
 		lokiClient.Stop() // Stop the Loki client before exiting to send logs

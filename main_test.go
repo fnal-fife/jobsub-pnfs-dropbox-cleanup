@@ -99,6 +99,30 @@ func TestRun(t *testing.T) {
 			},
 			errIs: errNoFilesInDropbox,
 		},
+		{
+			description: "getting pnfs dropbox files succeeds with files, cannot get condor schedds",
+			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
+				k := newTestKoanf().
+					withExperiment(t).
+					withVaultToken(t, true).
+					withBearerToken(t).
+					withGfal2ClientNoRetries(t)
+
+				mockCleanupFuncs := []mockCleanup{
+					writeGoodHtgettoken(t),             // Mock a working htgettoken command
+					writeFakeGfalLsReturnsSomeFiles(t), // Mock a gfal-ls command that prints some files
+					writeFakeBadCondorStatus(t),        // Mock a failing condor_status command
+				}
+
+				cleanupFunc := func() {
+					for _, cleanup := range mockCleanupFuncs {
+						defer cleanup()
+					}
+				}
+				return k.ko, cleanupFunc
+			},
+			errContains: "error getting condor schedds",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -224,5 +248,51 @@ func writeFakeGfalLsReturnsNoFiles(t *testing.T) mockCleanup {
 		t.Fatalf("failed to write mock gfal-ls script: %v", err)
 	}
 	exeMap["gfal-ls"] = gfalLsPath
+	return cleanupFunc
+}
+
+func writeFakeGfalLsReturnsSomeFiles(t *testing.T) mockCleanup {
+	t.Helper()
+	temp := t.TempDir()
+	oldPath, ok := exeMap["gfal-ls"]
+	cleanupFunc := func() {
+		if ok {
+			exeMap["gfal-ls"] = oldPath // Restore original gfal-ls command after our test
+			return
+		}
+		delete(exeMap, "gfal-ls") // Remove gfal-ls from exeMap if it was not set
+	}
+	gfalLsPath := filepath.Join(temp, "gfal-ls")
+	script := `#!/bin/sh
+	echo "-rwxrwxrwx   0 0     0            50 Sep 26 14:55 bogus_file.out"
+	echo "drwxrwxrwx   0 0     0             0 Apr  6  2023 bogus_dir"
+	exit 0
+	`
+	if err := os.WriteFile(gfalLsPath, []byte(script), 0755); err != nil {
+		t.Fatalf("failed to write mock gfal-ls script: %v", err)
+	}
+	exeMap["gfal-ls"] = gfalLsPath
+	return cleanupFunc
+}
+
+func writeFakeBadCondorStatus(t *testing.T) mockCleanup {
+	t.Helper()
+	temp := t.TempDir()
+	oldPath, ok := exeMap["condor_status"]
+	cleanupFunc := func() {
+		if ok {
+			exeMap["condor_status"] = oldPath // Restore original condor_status command after our test
+			return
+		}
+		delete(exeMap, "condor_status") // Remove condor_status from exeMap if it was not set
+	}
+	condorStatusPath := filepath.Join(temp, "condor_status")
+	failingScript := `#!/bin/sh
+	exit 1
+	`
+	if err := os.WriteFile(condorStatusPath, []byte(failingScript), 0755); err != nil {
+		t.Fatalf("failed to write mock condor_status script: %v", err)
+	}
+	exeMap["condor_status"] = condorStatusPath
 	return cleanupFunc
 }

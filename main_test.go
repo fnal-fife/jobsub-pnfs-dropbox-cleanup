@@ -48,7 +48,7 @@ func TestRun(t *testing.T) {
 				k := newTestKoanf().
 					withExperiment(t).
 					withVaultToken(t, true)
-				cleanupFunc := writeHtgettokenTestScript(t, 1)
+				cleanupFunc := writeBadHtgettoken(t) // Mock a failing htgettoken command
 				return k.ko, cleanupFunc
 			},
 			errContains: "error getting and validating token",
@@ -62,20 +62,42 @@ func TestRun(t *testing.T) {
 					withBearerToken(t).
 					withGfal2ClientNoRetries(t)
 
-				cleanupFuncs := []func(){
-					writeHtgettokenTestScript(t, 0), // Mock a working htgettoken command
-					writeFakeGfalLs(t),              // Mock a faulty gfal-ls command
-
+				mockCleanupFuncs := []mockCleanup{
+					writeGoodHtgettoken(t), // Mock a working htgettoken command
+					writeFakeBadGfalLs(t),  // Mock a faulty gfal-ls command
 				}
 
 				cleanupFunc := func() {
-					for _, cleanup := range cleanupFuncs {
+					for _, cleanup := range mockCleanupFuncs {
 						defer cleanup()
 					}
 				}
 				return k.ko, cleanupFunc
 			},
 			errContains: "error getting dropbox files list",
+		},
+		{
+			description: "getting pnfs dropbox files succeeds, but no files are returned",
+			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
+				k := newTestKoanf().
+					withExperiment(t).
+					withVaultToken(t, true).
+					withBearerToken(t).
+					withGfal2ClientNoRetries(t)
+
+				mockCleanupFuncs := []mockCleanup{
+					writeGoodHtgettoken(t),           // Mock a working htgettoken command
+					writeFakeGfalLsReturnsNoFiles(t), // Mock a gfal-ls command that prints nothing
+				}
+
+				cleanupFunc := func() {
+					for _, cleanup := range mockCleanupFuncs {
+						defer cleanup()
+					}
+				}
+				return k.ko, cleanupFunc
+			},
+			errIs: errNoFilesInDropbox,
 		},
 	}
 
@@ -149,11 +171,23 @@ func (k *testKoanf) withGfal2ClientNoRetries(t *testing.T) *testKoanf {
 	return k
 }
 
-func writeFakeGfalLs(t *testing.T) (cleanupFunc func()) {
+type mockCleanup func()
+
+func writeBadHtgettoken(t *testing.T) mockCleanup {
+	t.Helper()
+	return writeHtgettokenTestScript(t, 1)
+}
+
+func writeGoodHtgettoken(t *testing.T) mockCleanup {
+	t.Helper()
+	return writeHtgettokenTestScript(t, 0)
+}
+
+func writeFakeBadGfalLs(t *testing.T) mockCleanup {
 	t.Helper()
 	temp := t.TempDir()
 	oldPath, ok := exeMap["gfal-ls"]
-	cleanupFunc = func() {
+	cleanupFunc := func() {
 		if ok {
 			exeMap["gfal-ls"] = oldPath // Restore original gfal-ls command after our test
 			return
@@ -165,6 +199,28 @@ func writeFakeGfalLs(t *testing.T) (cleanupFunc func()) {
 	exit 1
 	`
 	if err := os.WriteFile(gfalLsPath, []byte(failingScript), 0755); err != nil {
+		t.Fatalf("failed to write mock gfal-ls script: %v", err)
+	}
+	exeMap["gfal-ls"] = gfalLsPath
+	return cleanupFunc
+}
+
+func writeFakeGfalLsReturnsNoFiles(t *testing.T) mockCleanup {
+	t.Helper()
+	temp := t.TempDir()
+	oldPath, ok := exeMap["gfal-ls"]
+	cleanupFunc := func() {
+		if ok {
+			exeMap["gfal-ls"] = oldPath // Restore original gfal-ls command after our test
+			return
+		}
+		delete(exeMap, "gfal-ls") // Remove gfal-ls from exeMap if it was not set
+	}
+	gfalLsPath := filepath.Join(temp, "gfal-ls")
+	script := `#!/bin/sh
+	exit 0
+	`
+	if err := os.WriteFile(gfalLsPath, []byte(script), 0755); err != nil {
 		t.Fatalf("failed to write mock gfal-ls script: %v", err)
 	}
 	exeMap["gfal-ls"] = gfalLsPath

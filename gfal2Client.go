@@ -122,7 +122,7 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 	var stdoutStderr []byte
 	var err error
 	for i := 0; i <= int(g.retryCount); i++ {
-		c := exec.CommandContext(ctx, "gfal-ls", cmdArgs...)
+		c := exec.CommandContext(ctx, exeMap["gfal-ls"], cmdArgs...)
 		c.Env = environ
 
 		funcLogger.Debug("Running command", "command", c.String(), "try", i+1, "maxRetries", g.retryCount)

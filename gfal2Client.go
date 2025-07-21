@@ -23,7 +23,6 @@ import (
 var lineRegex = regexp.MustCompile(`((?:\w|-)+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\w+\s+\d+\s+(?:(?:\d+:\d+)|\d+))\s+(.+)`)
 
 var (
-	defaultRetryCount    uint          = 5
 	defaultRetrySleep    time.Duration = 5 * time.Second // Default sleep time between retries
 	defaultFileCountLeft int32         = 1000            // Default file count limit
 	// In our directory structure, we expect that each directory will most likely have at least
@@ -69,12 +68,8 @@ type gfal2Client struct {
 func newGfal2Client(fileCountLimit int, retryCount uint, retrySleep time.Duration, environment []string) *gfal2Client {
 	c := &gfal2Client{
 		addedEnvironment: environment,
-		retryCount:       defaultRetryCount,
+		retryCount:       retryCount,
 		retrySleep:       defaultRetrySleep,
-	}
-
-	if retryCount >= 0 {
-		c.retryCount = retryCount
 	}
 
 	if retrySleep > 0 {

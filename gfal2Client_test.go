@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -209,4 +210,18 @@ func TestGfal2ClientFileListingToFileEntry(t *testing.T) {
 			},
 		)
 	}
+}
+
+func TestNewGfal2Client(t *testing.T) {
+	// We're checking the default behavior here
+	g := newGfal2Client(0, 0, 0, nil)
+
+	assert.Nil(t, g.addedEnvironment)
+	assert.Equal(t, uint(defaultFileCountLeft), g.fileCountLimit)
+	assert.Equal(t, uint(0), g.retryCount)
+	assert.Equal(t, defaultRetrySleep, g.retrySleep)
+
+	var v atomic.Int32
+	v.Store(int32(defaultFileCountLeft))
+	assert.Equal(t, g.fileCountLeft.Load(), v.Load())
 }

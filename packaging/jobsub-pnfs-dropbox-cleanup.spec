@@ -1,5 +1,5 @@
 Name:           jobsub-pnfs-dropbox-cleanup
-Version:        0.1.3
+Version:        0.1.4
 Release:        1%{?dist}
 Summary:        Cleanup script for resilient dCache
 

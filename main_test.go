@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/knadh/koanf/v2"
@@ -122,6 +124,60 @@ func TestRun(t *testing.T) {
 				return k.ko, cleanupFunc
 			},
 			errContains: "error getting condor schedds",
+		},
+		{
+			description: "getting pnfs dropbox files succeeds with files, schedds, cannot get condor jobs",
+			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
+				k := newTestKoanf().
+					withExperiment(t).
+					withVaultToken(t, true).
+					withBearerToken(t).
+					withGfal2ClientNoRetries(t)
+
+				mockCleanupFuncs := []mockCleanup{
+					writeGoodHtgettoken(t),             // Mock a working htgettoken command
+					writeFakeGfalLsReturnsSomeFiles(t), // Mock a gfal-ls command that prints some files
+					writeFakeGoodCondorStatus(t),       // Mock a good condor_status command
+					writeFakeCondorQScript(t, strings.NewReader(`#!/bin/sh
+					exit 1`)), // Mock a failing condor_q command
+				}
+
+				cleanupFunc := func() {
+					for _, cleanup := range mockCleanupFuncs {
+						defer cleanup()
+					}
+				}
+				return k.ko, cleanupFunc
+			},
+			errIs: errScheddQueryFailed,
+		},
+		{
+			description: "getting pnfs dropbox files succeeds with files, schedds, querying condor succeeds, parse error of ageCutoff",
+			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
+				k := newTestKoanf().
+					withExperiment(t).
+					withVaultToken(t, true).
+					withBearerToken(t).
+					withGfal2ClientNoRetries(t)
+				k.ko.Set("deleteFilesOlderThan", "not-a-duration") // Set an invalid duration
+
+				mockCleanupFuncs := []mockCleanup{
+					writeGoodHtgettoken(t),             // Mock a working htgettoken command
+					writeFakeGfalLsReturnsSomeFiles(t), // Mock a gfal-ls command that prints some files
+					writeFakeGoodCondorStatus(t),       // Mock a good condor_status command
+					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
+					cat %s
+					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads")))), // Mock a working condor_q command
+				}
+
+				cleanupFunc := func() {
+					for _, cleanup := range mockCleanupFuncs {
+						defer cleanup()
+					}
+				}
+				return k.ko, cleanupFunc
+			},
+			errContains: "time: invalid duration",
 		},
 	}
 
@@ -291,6 +347,31 @@ func writeFakeBadCondorStatus(t *testing.T) mockCleanup {
 	exit 1
 	`
 	if err := os.WriteFile(condorStatusPath, []byte(failingScript), 0755); err != nil {
+		t.Fatalf("failed to write mock condor_status script: %v", err)
+	}
+	exeMap["condor_status"] = condorStatusPath
+	return cleanupFunc
+}
+
+func writeFakeGoodCondorStatus(t *testing.T) mockCleanup {
+	t.Helper()
+	temp := t.TempDir()
+	oldPath, ok := exeMap["condor_status"]
+	cleanupFunc := func() {
+		if ok {
+			exeMap["condor_status"] = oldPath // Restore original condor_status command after our test
+			return
+		}
+		delete(exeMap, "condor_status") // Remove condor_status from exeMap if it was not set
+	}
+	condorStatusPath := filepath.Join(temp, "condor_status")
+	fakeAdsFile := filepath.Join("testData", "condorOutput", "condor_status_mock_ads")
+	// TODO How does condor_status return the classads?
+	workingScript := fmt.Sprintf(`#!/bin/sh
+	cat %s
+	exit 0
+	`, fakeAdsFile)
+	if err := os.WriteFile(condorStatusPath, []byte(workingScript), 0755); err != nil {
 		t.Fatalf("failed to write mock condor_status script: %v", err)
 	}
 	exeMap["condor_status"] = condorStatusPath

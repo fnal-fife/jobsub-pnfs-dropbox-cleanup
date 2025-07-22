@@ -182,6 +182,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	var e1 *errDeletingFiles
 	err = run(ctx, k)
 	if err != nil {
 		var exitCode int
@@ -204,6 +205,9 @@ func main() {
 		case errors.Is(err, errScheddQueryFailed):
 			funcLogger.Error(errMsg + "No condor schedds were queried successfully. Please check your condor pool configuration or this script's configuration")
 			exitCode = 4
+		case errors.As(err, &e1):
+			funcLogger.Error(err.Error())
+			exitCode = 5
 		default:
 			funcLogger.With("experiment", k.String("experiment")).Error(errMsg + err.Error())
 			exitCode = 1
@@ -433,6 +437,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 	// 4. Delete files and directories
 	startDeleteFiles := time.Now()
+	deleteFilesErrs := &errDeletingFiles{files: make([]string, 0, len(fileMap))}
 	// 4a. Delete files in our delete list
 	// Note:  This isn't as slick as recursion, but the former used way more memory, and actually made the program get killed by the OOM killer
 	// Do a pass where we start with deleting files, then their parents if they're empty
@@ -444,6 +449,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
 		if err != nil {
 			funcLogger.Error("error deleting file", "error", err)
+			deleteFilesErrs.files = append(deleteFilesErrs.files, filename)
 			numErrorsDeletingFiles.WithLabelValues(k.String("experiment")).Inc()
 			continue
 		}
@@ -490,6 +496,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
 		if err != nil {
 			funcLogger.Error("error deleting directory", "error", err)
+			deleteFilesErrs.files = append(deleteFilesErrs.files, filename)
 			numErrorsDeletingFiles.WithLabelValues(k.String("experiment")).Inc()
 			continue
 		}
@@ -526,6 +533,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			err := dClient.removeFile(ctx, PNFSToHTTPS(_parent.Name(), dCacheHostPort, stripPNFSFromPath))
 			if err != nil {
 				funcLogger.Error("error deleting directory", "error", err)
+				deleteFilesErrs.files = append(deleteFilesErrs.files, _parent.Name())
 				numErrorsDeletingFiles.WithLabelValues(k.String("experiment")).Inc()
 				break
 			}
@@ -533,6 +541,11 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			funcLogger.Info("Empty directory deleted", "dirName", _parent.Name(), "dateCreated", fileMap[filename].created)
 			_parent = _parent.parent
 		}
+	}
+
+	if len(deleteFilesErrs.files) > 0 {
+		funcLogger.Error(deleteFilesErrs.Error())
+		return deleteFilesErrs
 	}
 
 	promDuration.WithLabelValues("deleteFiles").Set(time.Since(startDeleteFiles).Seconds())
@@ -544,5 +557,14 @@ var (
 	errNoFilesInDropbox  = errors.New("no files found in dropbox")
 	errNoSchedds         = errors.New("no condor schedds found")
 	errScheddQueryFailed = errors.New("no condor schedds were queried successfully")
-	errNoFilesToDelete   = errors.New("no files to delete")
+	errNoFilesToDelete   = errors.New("no more files to delete")
 )
+
+// errDeletingFiles is an error type that holds a list of files that could not be deleted
+type errDeletingFiles struct {
+	files []string
+}
+
+func (e *errDeletingFiles) Error() string {
+	return fmt.Sprintf("error deleting files: %v", e.files)
+}

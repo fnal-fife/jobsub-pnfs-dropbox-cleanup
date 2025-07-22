@@ -243,16 +243,16 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		return err
 	}
 
-	// 0b. Check Vault Token
+	// 0c. Check Vault Token
 	funcLogger.Debug("Checking vault token file", "vaultTokenFile", k.String("vault.vaultTokenFile"))
 	if err := checkVaultTokenFile(k.String("vault.vaultTokenFile"), k.String("vault.vaultTokenAgeCutoff")); err != nil {
 		return fmt.Errorf("error checking vault token file: %w", err)
 	}
 	funcLogger.Debug("Vault token file exists and is new enough", "vaultTokenFile", k.String("vault.vaultTokenFile"))
 
-	// 0c. Get our BEARER token to obtain files
-	// 0ca. Make sure that vault token has enough time left before expiration. We will pass this value to the htgettokenClient,
-	// which will run this check for us
+	// 0d. Get our BEARER token to obtain files
+	// We make sure that the vault token has enough time left before expiration (minTimeLeft).
+	// We will pass this value to the htgettokenClient, which will run this check for us
 	startGetBearerToken := time.Now()
 
 	funcLogger.Debug("Getting BEARER token to get files list from dCache")

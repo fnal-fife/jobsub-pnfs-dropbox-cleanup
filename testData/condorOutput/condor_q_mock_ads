@@ -1,13 +1,19 @@
 Attr1 = "value1"
 Attr2 = "value2"
 IntAttr = 42
-PNFS_INPUT_FILES = "/pnfs/file1,/pnfs/file2,/pnfs/file3"
+ClusterId = 1
+ProcId = 0
+PNFS_INPUT_FILES = "/pnfs/testexperiment/resilient/jobsub_stage/file1,/pnfs/testexperiment/resilient/jobsub_stage/file2,/pnfs/testexperiment/resilient/jobsub_stage/file3"
 
 Attr1 = "value1b"
 Attr2 = "value2b"
 IntAttr = 43
-PNFS_INPUT_FILES = "/pnfs/file1b,/pnfs/file2b,/pnfs/file3b"
+ClusterId = 2
+ProcId = 0
+PNFS_INPUT_FILES = "/pnfs/testexperiment/resilient/jobsub_stage/file1b,/pnfs/testexperiment/resilient/jobsub_stage/file2b,/pnfs/testexperiment/resilient/jobsub_stage/file3b"
 
 Attr1 = "value1c"
 Attr2 = "value2c"
 IntAttr = 44
+ClusterId = 2
+ProcId = 1

@@ -225,7 +225,7 @@ func TestGetScheddFiles(t *testing.T) {
 			cat %s
 			exit 0
 			`, goodClassAdFile),
-			expectedFiles:       []string{"/pnfs/file1", "/pnfs/file2", "/pnfs/file3", "/pnfs/file1b", "/pnfs/file2b", "/pnfs/file3b"},
+			expectedFiles:       []string{"/pnfs/testexperiment/resilient/jobsub_stage/file1", "/pnfs/testexperiment/resilient/jobsub_stage/file2", "/pnfs/testexperiment/resilient/jobsub_stage/file3", "/pnfs/testexperiment/resilient/jobsub_stage/file1b", "/pnfs/testexperiment/resilient/jobsub_stage/file2b", "/pnfs/testexperiment/resilient/jobsub_stage/file3b"},
 			expectedErrContains: "",
 		},
 	}

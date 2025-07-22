@@ -39,7 +39,7 @@ func TestRun(t *testing.T) {
 		{
 			description: "parse error of ageCutoff",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
-				k := newTestKoanf().
+				k := newTestKoanf(true).
 					withExperiment(t)
 				k.ko.Set("deleteFilesOlderThan", "not-a-duration") // Set an invalid duration
 
@@ -50,7 +50,7 @@ func TestRun(t *testing.T) {
 		{
 			description: "Vault token does not exist",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
-				k := newTestKoanf().
+				k := newTestKoanf(true).
 					withExperiment(t).
 					withValidAgeCutoff(t).
 					withVaultToken(t, false)
@@ -61,7 +61,7 @@ func TestRun(t *testing.T) {
 		{
 			description: "getting bearer token fails",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
-				k := newTestKoanf().
+				k := newTestKoanf(true).
 					withExperiment(t).
 					withValidAgeCutoff(t).
 					withVaultToken(t, true)
@@ -73,7 +73,7 @@ func TestRun(t *testing.T) {
 		{
 			description: "getting pnfs dropbox files fails",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
-				k := newTestKoanf().
+				k := newTestKoanf(true).
 					withExperiment(t).
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
@@ -97,7 +97,7 @@ func TestRun(t *testing.T) {
 		{
 			description: "getting pnfs dropbox files succeeds, but no files are returned",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
-				k := newTestKoanf().
+				k := newTestKoanf(true).
 					withExperiment(t).
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
@@ -121,7 +121,7 @@ func TestRun(t *testing.T) {
 		{
 			description: "getting pnfs dropbox files succeeds with files, cannot get condor schedds",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
-				k := newTestKoanf().
+				k := newTestKoanf(true).
 					withExperiment(t).
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
@@ -146,7 +146,7 @@ func TestRun(t *testing.T) {
 		{
 			description: "getting pnfs dropbox files succeeds with files, schedds, cannot get condor jobs",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
-				k := newTestKoanf().
+				k := newTestKoanf(true).
 					withExperiment(t).
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
@@ -174,7 +174,7 @@ func TestRun(t *testing.T) {
 			// Both dropbox list and condor list should have /pnfs/testexperiment/resilient/jobsub_stage/file1
 			description: "all files in dropbox list are used by jobs - no files to delete",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
-				k := newTestKoanf().
+				k := newTestKoanf(true).
 					withExperiment(t).
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
@@ -198,6 +198,34 @@ func TestRun(t *testing.T) {
 				return k.ko, cleanupFunc
 			},
 			errIs: errNoFilesToDelete,
+		},
+		{
+			description: "test mode - we should return nil error after getting planned delete list",
+			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
+				k := newTestKoanf(true).
+					withExperiment(t).
+					withValidAgeCutoff(t).
+					withVaultToken(t, true).
+					withBearerToken(t).
+					withGfal2ClientNoRetries(t)
+
+				mockCleanupFuncs := []mockCleanup{
+					writeGoodHtgettoken(t),             // Mock a working htgettoken command
+					writeFakeGfalLsReturnsSomeFiles(t), // Mock a gfal-ls command that prints some files
+					writeFakeGoodCondorStatus(t),       // Mock a good condor_status command
+					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
+					cat %s
+					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
+				}
+
+				cleanupFunc := func() {
+					for _, cleanup := range mockCleanupFuncs {
+						defer cleanup()
+					}
+				}
+				return k.ko, cleanupFunc
+			},
+			assertNoError: true,
 		},
 	}
 
@@ -229,9 +257,9 @@ type testKoanf struct {
 	ko *koanf.Koanf
 }
 
-func newTestKoanf() *testKoanf {
+func newTestKoanf(testMode bool) *testKoanf {
 	k := &testKoanf{ko: koanf.New(".")}
-	k.ko.Set("test", true) // Set a dummy value to indicate this is a test koanf
+	k.ko.Set("test", testMode) // Set a dummy value to indicate this is a test koanf
 	return k
 }
 

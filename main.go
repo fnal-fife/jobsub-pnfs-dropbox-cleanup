@@ -224,6 +224,25 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		return errUsage
 	}
 
+	// 0b. Parse all the configured durations to make sure they are valid.  If not, we will either
+	// use the default values or return an error
+	minTimeLeft, err := time.ParseDuration(k.String("vault.minVaultTokenTimeLeft"))
+	if err != nil {
+		funcLogger.Error("error parsing minimum vault token time left duration. Using default value", "error", err)
+		minTimeLeft = defaultVaultTokenTimeLeft
+	}
+	var retryDuration time.Duration
+	retryDuration, err = time.ParseDuration(k.String("gfal2.retrySleep"))
+	if err != nil {
+		funcLogger.Error("error parsing gfal2 retry sleep duration. Will use default", "error", err)
+		retryDuration = 0
+	}
+	fileAgeCutoff, err := time.ParseDuration(k.String("deleteFilesOlderThan"))
+	if err != nil {
+		funcLogger.Error("error parsing configured file age cutoff duration", "error", err)
+		return err
+	}
+
 	// 0b. Check Vault Token
 	funcLogger.Debug("Checking vault token file", "vaultTokenFile", k.String("vault.vaultTokenFile"))
 	if err := checkVaultTokenFile(k.String("vault.vaultTokenFile"), k.String("vault.vaultTokenAgeCutoff")); err != nil {
@@ -235,11 +254,6 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	// 0ca. Make sure that vault token has enough time left before expiration. We will pass this value to the htgettokenClient,
 	// which will run this check for us
 	startGetBearerToken := time.Now()
-	minTimeLeft, err := time.ParseDuration(k.String("vault.minVaultTokenTimeLeft"))
-	if err != nil {
-		funcLogger.Error("error parsing minimum vault token time left duration. Using default value", "error", err)
-		minTimeLeft = defaultVaultTokenTimeLeft
-	}
 
 	funcLogger.Debug("Getting BEARER token to get files list from dCache")
 	h := newHtgettokenClient(
@@ -266,12 +280,6 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	// 1. Get files list from pnfs dropbox
 	startGetDropboxFiles := time.Now()
 	addedEnvironment := []string{"BEARER_TOKEN=" + string(tok)}
-	var retryDuration time.Duration
-	retryDuration, err = time.ParseDuration(k.String("gfal2.retrySleep"))
-	if err != nil {
-		funcLogger.Error("error parsing gfal2 retry sleep duration. Will use default", "error", err)
-		retryDuration = 0
-	}
 
 	gClient := newGfal2Client(k.Int("totalFileCountLimit"), uint(k.Int("gfal2.retryCount")), retryDuration, addedEnvironment)
 	dClient := newDCacheClient(string(tok), true)
@@ -380,11 +388,6 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	// Maybe if we have performance problems, we first get the list of job files, then pass in a filter function to our tree-builder that could check
 	// for recency or job file membership
 	startFilterFiles := time.Now()
-	fileAgeCutoff, err := time.ParseDuration(k.String("deleteFilesOlderThan"))
-	if err != nil {
-		funcLogger.Error("error parsing configured file age cutoff duration", "error", err)
-		return err
-	}
 
 	funcLogger.Debug("Are the files not recent or being used by condor jobs?")
 	for _, entry := range fileMap {

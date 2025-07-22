@@ -37,9 +37,23 @@ func TestRun(t *testing.T) {
 			errIs:       errUsage,
 		},
 		{
+			description: "parse error of ageCutoff",
+			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
+				k := newTestKoanf().
+					withExperiment(t)
+				k.ko.Set("deleteFilesOlderThan", "not-a-duration") // Set an invalid duration
+
+				return k.ko, nil
+			},
+			errContains: "time: invalid duration",
+		},
+		{
 			description: "Vault token does not exist",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
-				k := newTestKoanf().withExperiment(t).withVaultToken(t, false)
+				k := newTestKoanf().
+					withExperiment(t).
+					withValidAgeCutoff(t).
+					withVaultToken(t, false)
 				return k.ko, nil
 			},
 			errIs: errNoVaultTokenFile,
@@ -49,6 +63,7 @@ func TestRun(t *testing.T) {
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
 				k := newTestKoanf().
 					withExperiment(t).
+					withValidAgeCutoff(t).
 					withVaultToken(t, true)
 				cleanupFunc := writeBadHtgettoken(t) // Mock a failing htgettoken command
 				return k.ko, cleanupFunc
@@ -60,6 +75,7 @@ func TestRun(t *testing.T) {
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
 				k := newTestKoanf().
 					withExperiment(t).
+					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
 					withGfal2ClientNoRetries(t)
@@ -83,6 +99,7 @@ func TestRun(t *testing.T) {
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
 				k := newTestKoanf().
 					withExperiment(t).
+					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
 					withGfal2ClientNoRetries(t)
@@ -106,6 +123,7 @@ func TestRun(t *testing.T) {
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
 				k := newTestKoanf().
 					withExperiment(t).
+					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
 					withGfal2ClientNoRetries(t)
@@ -130,6 +148,7 @@ func TestRun(t *testing.T) {
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
 				k := newTestKoanf().
 					withExperiment(t).
+					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
 					withGfal2ClientNoRetries(t)
@@ -150,34 +169,6 @@ func TestRun(t *testing.T) {
 				return k.ko, cleanupFunc
 			},
 			errIs: errScheddQueryFailed,
-		},
-		{
-			description: "getting pnfs dropbox files succeeds with files, schedds, querying condor succeeds, parse error of ageCutoff",
-			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
-				k := newTestKoanf().
-					withExperiment(t).
-					withVaultToken(t, true).
-					withBearerToken(t).
-					withGfal2ClientNoRetries(t)
-				k.ko.Set("deleteFilesOlderThan", "not-a-duration") // Set an invalid duration
-
-				mockCleanupFuncs := []mockCleanup{
-					writeGoodHtgettoken(t),             // Mock a working htgettoken command
-					writeFakeGfalLsReturnsSomeFiles(t), // Mock a gfal-ls command that prints some files
-					writeFakeGoodCondorStatus(t),       // Mock a good condor_status command
-					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
-					cat %s
-					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads")))), // Mock a working condor_q command
-				}
-
-				cleanupFunc := func() {
-					for _, cleanup := range mockCleanupFuncs {
-						defer cleanup()
-					}
-				}
-				return k.ko, cleanupFunc
-			},
-			errContains: "time: invalid duration",
 		},
 	}
 
@@ -216,6 +207,12 @@ func newTestKoanf() *testKoanf {
 func (k *testKoanf) withExperiment(t *testing.T) *testKoanf {
 	t.Helper()
 	k.ko.Set("experiment", "testexperiment")
+	return k
+}
+
+func (k *testKoanf) withValidAgeCutoff(t *testing.T) *testKoanf {
+	t.Helper()
+	k.ko.Set("deleteFilesOlderThan", "1s")
 	return k
 }
 

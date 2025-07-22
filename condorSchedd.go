@@ -84,7 +84,7 @@ func init() {
 func getCondorSchedds(ctx context.Context, pool, constraint string) ([]*condorSchedd, error) {
 	funcLogger := logger.With("caller", "getCondorSchedds")
 	start := time.Now()
-	cmd := condor.NewCommand(exeMap["condor_status"]).WithPool(pool).WithConstraint(constraint).WithArg("-schedd")
+	cmd := condor.NewCommand(exeMap["condor_status"]).WithPool(pool).WithConstraint(constraint).WithArg("-schedd").WithAttribute("Name")
 	funcLogger.Debug("Running command", "command", append([]string{cmd.Command}, cmd.MakeArgs()...))
 	ads, err := cmd.RunWithContext(ctx)
 	if err != nil {
@@ -129,7 +129,7 @@ func (c *condorSchedd) getPNFSJobsForExperiment(ctx context.Context, experiment 
 	useConstraint := buildConstraint(experiment, constraint)
 	funcLogger.Debug("Final job constraint", "constraint", useConstraint)
 
-	condorCmd := condor.NewCommand(exeMap["condor_q"]).WithName(c.name).WithConstraint(useConstraint)
+	condorCmd := condor.NewCommand(exeMap["condor_q"]).WithName(c.name).WithConstraint(useConstraint).WithAttribute("PNFS_INPUT_FILES")
 	funcLogger.Debug("Running command", "command", append([]string{condorCmd.Command}, condorCmd.MakeArgs()...))
 	cmd := condorCmd.CmdContext(ctx)
 	cmd.Env = append(os.Environ(), c.cmdEnv...)

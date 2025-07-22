@@ -170,6 +170,35 @@ func TestRun(t *testing.T) {
 			},
 			errIs: errScheddQueryFailed,
 		},
+		{
+			// Both dropbox list and condor list should have /pnfs/testexperiment/resilient/jobsub_stage/file1
+			description: "all files in dropbox list are used by jobs - no files to delete",
+			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
+				k := newTestKoanf().
+					withExperiment(t).
+					withValidAgeCutoff(t).
+					withVaultToken(t, true).
+					withBearerToken(t).
+					withGfal2ClientNoRetries(t)
+
+				mockCleanupFuncs := []mockCleanup{
+					writeGoodHtgettoken(t),             // Mock a working htgettoken command
+					writeFakeGfalLsReturnsSomeFiles(t), // Mock a gfal-ls command that prints some files
+					writeFakeGoodCondorStatus(t),       // Mock a good condor_status command
+					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
+					cat %s
+					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads")))), // Mock a working condor_q command
+				}
+
+				cleanupFunc := func() {
+					for _, cleanup := range mockCleanupFuncs {
+						defer cleanup()
+					}
+				}
+				return k.ko, cleanupFunc
+			},
+			errIs: errNoFilesToDelete,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -201,7 +230,9 @@ type testKoanf struct {
 }
 
 func newTestKoanf() *testKoanf {
-	return &testKoanf{ko: koanf.New(".")}
+	k := &testKoanf{ko: koanf.New(".")}
+	k.ko.Set("test", true) // Set a dummy value to indicate this is a test koanf
+	return k
 }
 
 func (k *testKoanf) withExperiment(t *testing.T) *testKoanf {
@@ -317,8 +348,7 @@ func writeFakeGfalLsReturnsSomeFiles(t *testing.T) mockCleanup {
 	}
 	gfalLsPath := filepath.Join(temp, "gfal-ls")
 	script := `#!/bin/sh
-	echo "-rwxrwxrwx   0 0     0            50 Sep 26 14:55 bogus_file.out"
-	echo "drwxrwxrwx   0 0     0             0 Apr  6  2023 bogus_dir"
+	echo "-rwxrwxrwx   0 0     0            50 Sep 26 14:55 file1"
 	exit 0
 	`
 	if err := os.WriteFile(gfalLsPath, []byte(script), 0755); err != nil {

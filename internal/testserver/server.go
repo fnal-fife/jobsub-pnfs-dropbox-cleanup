@@ -22,10 +22,14 @@ func StartServer(ctx context.Context, t *testing.T) (shutdown chan struct{}, sta
 	server := &http.Server{
 		Addr: ":8080",
 	}
+	// Server Mux
+	mux := http.NewServeMux()
+	server.Handler = mux
 
 	// Handlers
-	http.HandleFunc("/ready", handleReady)
-	http.HandleFunc("/testexperiment/resilient/jobsub_stage/file1", handleFile1Func(t))
+	mux.HandleFunc("/ready", handleReady)
+	mux.HandleFunc("/testexperiment/resilient/jobsub_stage/file1", handleFile1Func(t))
+	mux.HandleFunc("/testexperiment/resilient/jobsub_stage/dir1", handleDir1Func(t))
 
 	// Start the server in a goroutine
 	go func() {
@@ -84,10 +88,21 @@ func handleReady(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleFile1Func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
+	// /testexperiment/resilient/jobsub_stage/file1
 	return func(w http.ResponseWriter, r *http.Request) {
-		// /testexperiment/resilient/jobsub_stage/file1
 		if r.Method == http.MethodDelete {
 			t.Log("Received DELETE request for /testexperiment/resilient/jobsub_stage/file1")
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
+}
+
+func handleDir1Func(t *testing.T) func(w http.ResponseWriter, r *http.Request) {
+	// /testexperiment/resilient/jobsub_stage/dir1
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			t.Log("Received DELETE request for /testexperiment/resilient/jobsub_stage/dir1")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

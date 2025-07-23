@@ -18,7 +18,20 @@ import (
 func TestMain(m *testing.M) {
 	// Setup code here if needed
 	logger = slog.New(slog.NewTextHandler(os.Stdout, nil)) // Dummy logger for tests
+
+	// Start our dCache test server
+	ctx, cancel := context.WithCancel(context.Background())
+	shutdown, err := testserver.StartServer(ctx)
+	if err != nil {
+		fmt.Printf("Failed to start test server: %v\n", err)
+		os.Exit(1)
+	}
+
 	exitCode := m.Run()
+
+	cancel()   // Cancel the context to shut down the server
+	<-shutdown // Wait for the server to shut down
+
 	os.Exit(exitCode)
 }
 
@@ -238,7 +251,8 @@ func TestRun(t *testing.T) {
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t)
+					withGfal2ClientNoRetries(t).
+					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t),           // Mock a working htgettoken command
@@ -247,7 +261,6 @@ func TestRun(t *testing.T) {
 					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
 					cat %s
 					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
-					startTestDcacheServer(t, k), // Start a test dCache server and set configuration to point to it
 				}
 
 				cleanupFunc := func() {
@@ -267,7 +280,8 @@ func TestRun(t *testing.T) {
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t)
+					withGfal2ClientNoRetries(t).
+					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t),                       // Mock a working htgettoken command
@@ -276,7 +290,6 @@ func TestRun(t *testing.T) {
 					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
 					cat %s
 					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
-					startTestDcacheServer(t, k), // Start a test dCache server and set configuration to point to it
 				}
 
 				cleanupFunc := func() {
@@ -296,7 +309,8 @@ func TestRun(t *testing.T) {
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t)
+					withGfal2ClientNoRetries(t).
+					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t),                 // Mock a working htgettoken command
@@ -305,7 +319,6 @@ func TestRun(t *testing.T) {
 					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
 					cat %s
 					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
-					startTestDcacheServer(t, k), // Start a test dCache server and set configuration to point to it
 				}
 
 				cleanupFunc := func() {
@@ -404,6 +417,12 @@ func (k *testKoanf) withGfal2ClientNoRetries(t *testing.T) *testKoanf {
 	t.Helper()
 	k.ko.Set("gfal2.retryCount", 0)
 	k.ko.Set("gfal2.retrySleep", "1ns")
+	return k
+}
+
+func (k *testKoanf) withTestDcacheServer(t *testing.T) *testKoanf {
+	t.Helper()
+	k.ko.Set("dCacheHostPort", "http://localhost:8080")
 	return k
 }
 
@@ -587,19 +606,4 @@ func writeFakeGoodCondorStatus(t *testing.T) mockCleanup {
 	}
 	exeMap["condor_status"] = condorStatusPath
 	return cleanupFunc
-}
-
-func startTestDcacheServer(t *testing.T, k *testKoanf) mockCleanup {
-	t.Helper()
-	k.ko.Set("dCacheHostPort", "http://localhost:8080")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	serverShutdown, err := testserver.StartServer(ctx, t)
-	if err != nil {
-		t.Fatalf("failed to start test server: %v", err)
-	}
-	return func() {
-		cancel()
-		<-serverShutdown // Wait for the server to shut down
-	}
 }

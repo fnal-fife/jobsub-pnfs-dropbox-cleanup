@@ -1,0 +1,17 @@
+Attr1 = "value1"
+Attr2 = "value2"
+IntAttr = 42
+ClusterId = 1
+ProcId = 0
+
+Attr1 = "value1b"
+Attr2 = "value2b"
+IntAttr = 43
+ClusterId = 2
+ProcId = 0
+
+Attr1 = "value1c"
+Attr2 = "value2c"
+IntAttr = 44
+ClusterId = 2
+ProcId = 1

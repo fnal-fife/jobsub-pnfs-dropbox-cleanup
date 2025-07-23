@@ -11,6 +11,8 @@ import (
 
 	"github.com/knadh/koanf/v2"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/shreyb/jobsub-pnfs-dropbox-cleanup/internal/testserver"
 )
 
 func TestMain(m *testing.M) {
@@ -23,11 +25,12 @@ func TestMain(m *testing.M) {
 func TestRun(t *testing.T) {
 
 	type testCase struct {
-		description   string
-		setupFunc     func(*testing.T) (k *koanf.Koanf, cleanupFunc func())
-		assertNoError bool
-		errIs         error
-		errContains   string
+		description            string
+		setupFunc              func(*testing.T) (k *koanf.Koanf, cleanupFunc func())
+		assertNoError          bool
+		errIs                  error
+		errContains            string
+		expectedFileDeleteErrs []string
 	}
 
 	testCases := []testCase{
@@ -227,6 +230,35 @@ func TestRun(t *testing.T) {
 			},
 			assertNoError: true,
 		},
+		{
+			description: "NOT test mode - but there were only files, so we never try to delete directories",
+			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
+				k := newTestKoanf(false).
+					withExperiment(t).
+					withValidAgeCutoff(t).
+					withVaultToken(t, true).
+					withBearerToken(t).
+					withGfal2ClientNoRetries(t)
+
+				mockCleanupFuncs := []mockCleanup{
+					writeGoodHtgettoken(t),             // Mock a working htgettoken command
+					writeFakeGfalLsReturnsSomeFiles(t), // Mock a gfal-ls command that prints some files
+					writeFakeGoodCondorStatus(t),       // Mock a good condor_status command
+					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
+					cat %s
+					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
+					startTestDcacheServer(t, k), // Start a test dCache server and set configuration to point to it
+				}
+
+				cleanupFunc := func() {
+					for _, cleanup := range mockCleanupFuncs {
+						defer cleanup()
+					}
+				}
+				return k.ko, cleanupFunc
+			},
+			errIs: errNoFilesToDelete,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -244,6 +276,10 @@ func TestRun(t *testing.T) {
 				assert.ErrorIs(t, err, tc.errIs)
 			case tc.errContains != "":
 				assert.ErrorContains(t, err, tc.errContains)
+			case len(tc.expectedFileDeleteErrs) > 0:
+				var e1 *errDeletingFiles
+				assert.ErrorAs(t, err, &e1)
+				assert.ElementsMatch(t, e1.files, tc.expectedFileDeleteErrs)
 			default:
 				t.Fatalf("No error assertion provided for test case: %s", tc.description)
 			}
@@ -431,4 +467,19 @@ func writeFakeGoodCondorStatus(t *testing.T) mockCleanup {
 	}
 	exeMap["condor_status"] = condorStatusPath
 	return cleanupFunc
+}
+
+func startTestDcacheServer(t *testing.T, k *testKoanf) mockCleanup {
+	t.Helper()
+	k.ko.Set("dCacheHostPort", "http://localhost:8080")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serverShutdown, err := testserver.StartServer(ctx, t)
+	if err != nil {
+		t.Fatalf("failed to start test server: %v", err)
+	}
+	return func() {
+		cancel()
+		<-serverShutdown // Wait for the server to shut down
+	}
 }

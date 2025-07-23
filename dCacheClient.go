@@ -88,7 +88,7 @@ func (d *dCacheClient) removeFile(ctx context.Context, urlPath string) error {
 		return fmt.Errorf("failed to delete file: %s: %s", resp.Status, msg)
 	}
 
-	slog.Debug("File deleted successfully", "urlPath", urlPath)
+	funcLogger.Debug("File deleted successfully", "urlPath", urlPath)
 	dCacheClientRemoveFileHistogram.Observe(time.Since(start).Seconds())
 	return nil
 }

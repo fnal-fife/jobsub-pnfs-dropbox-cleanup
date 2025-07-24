@@ -2,13 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"math"
 	"os"
-	"path"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -186,7 +182,6 @@ func TestGetScheddFiles(t *testing.T) {
 	testSchedd := &condorSchedd{
 		name: "test-schedd",
 	}
-	goodClassAdFile := path.Join("testData", "condorOutput", "condor_q_mock_ads")
 
 	type testCase struct {
 		description         string
@@ -210,21 +205,16 @@ func TestGetScheddFiles(t *testing.T) {
 			expectedErrContains: "error verifying auth to condor schedd",
 		},
 		{
-			description:   "schedd query fails",
-			authSetupFunc: fakeGoodIDTokenAuthSetup,
-			condorQMockScript: `#!/bin/sh
-			exit 1
-			`,
+			description:         "schedd query fails",
+			authSetupFunc:       fakeGoodIDTokenAuthSetup,
+			condorQMockScript:   filepath.Join("internal", "testscripts", "exit1"),
 			expectedFiles:       nil,
 			expectedErrContains: "error getting PNFS jobs for experiment " + experiment,
 		},
 		{
-			description:   "schedd query succeeds",
-			authSetupFunc: fakeGoodIDTokenAuthSetup,
-			condorQMockScript: fmt.Sprintf(`#!/bin/sh
-			cat %s
-			exit 0
-			`, goodClassAdFile),
+			description:         "schedd query succeeds",
+			authSetupFunc:       fakeGoodIDTokenAuthSetup,
+			condorQMockScript:   filepath.Join("internal", "testscripts", "condor_q-mock-ads"),
 			expectedFiles:       []string{"/pnfs/testexperiment/resilient/jobsub_stage/file1", "/pnfs/testexperiment/resilient/jobsub_stage/file2", "/pnfs/testexperiment/resilient/jobsub_stage/file3", "/pnfs/testexperiment/resilient/jobsub_stage/file1b", "/pnfs/testexperiment/resilient/jobsub_stage/file2b", "/pnfs/testexperiment/resilient/jobsub_stage/file3b"},
 			expectedErrContains: "",
 		},
@@ -237,7 +227,7 @@ func TestGetScheddFiles(t *testing.T) {
 			}
 
 			if tc.condorQMockScript != "" {
-				cleanupFunc := writeFakeCondorQScript(t, strings.NewReader(tc.condorQMockScript))
+				cleanupFunc := useFakeExecutable(t, "condor_q", tc.condorQMockScript)
 				defer cleanupFunc() // Ensure we clean up the mock command
 			}
 
@@ -249,28 +239,4 @@ func TestGetScheddFiles(t *testing.T) {
 			assert.ElementsMatch(t, tc.expectedFiles, files)
 		})
 	}
-}
-
-func writeFakeCondorQScript(t *testing.T, script io.Reader) (cleanupFunc func()) {
-	t.Helper()
-	if script == nil {
-		t.Fatal("script cannot be nil Reader")
-	}
-	if oldPath, ok := exeMap["condor_q"]; ok {
-		cleanupFunc = func() { exeMap["condor_q"] = oldPath } // Restore original path when we're done
-	}
-
-	temp := t.TempDir()
-	fakeCondorQ := filepath.Join(temp, "condor_q")
-
-	b, err := io.ReadAll(script)
-	if err != nil {
-		t.Fatalf("failed to read script: %v", err)
-	}
-
-	if err := os.WriteFile(fakeCondorQ, b, 0o755); err != nil {
-		t.Fatalf("failed to write fake condor_q script: %v", err)
-	}
-	exeMap["condor_q"] = fakeCondorQ
-	return cleanupFunc
 }

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# Test script to generate fake condor_status -schedd output
+echo "Name = \"schedd1\""
+echo ""
+echo "Name = \"schedd2\""
+echo ""
+echo "Name = \"schedd3\""
+echo ""
+echo "Name = \"schedd4\""
+echo ""
+echo "Name = \"schedd5\""

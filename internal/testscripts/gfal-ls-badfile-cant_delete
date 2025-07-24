@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Test script for gfal-ls with a file that cannot be deleted from the test webserver
+echo "-rwxrwxrwx   0 0     0            50 Sep 26 14:55 file2"
+exit 0

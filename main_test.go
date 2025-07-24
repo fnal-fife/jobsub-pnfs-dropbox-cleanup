@@ -98,7 +98,7 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					writeFakeBadGfalLs(t),  // Mock a faulty gfal-ls command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "exit1")), // Mock a faulty gfal-ls command
 				}
 
 				cleanupFunc := func() {
@@ -121,8 +121,8 @@ func TestRun(t *testing.T) {
 					withGfal2ClientNoRetries(t)
 
 				mockCleanupFuncs := []mockCleanup{
-					writeGoodHtgettoken(t),           // Mock a working htgettoken command
-					writeFakeGfalLsReturnsNoFiles(t), // Mock a gfal-ls command that prints nothing
+					writeGoodHtgettoken(t), // Mock a working htgettoken command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "exit0")), // Mock a gfal-ls command where nothing is returned
 				}
 
 				cleanupFunc := func() {
@@ -145,9 +145,9 @@ func TestRun(t *testing.T) {
 					withGfal2ClientNoRetries(t)
 
 				mockCleanupFuncs := []mockCleanup{
-					writeGoodHtgettoken(t),           // Mock a working htgettoken command
-					writeFakeGfalLsReturnsOneFile(t), // Mock a gfal-ls command that prints some files
-					writeFakeBadCondorStatus(t),      // Mock a failing condor_status command
+					writeGoodHtgettoken(t), // Mock a working htgettoken command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")), // Mock a gfal-ls command that returns one file
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "exit1")),     // Mock a failing condor_status command
 				}
 
 				cleanupFunc := func() {
@@ -170,9 +170,9 @@ func TestRun(t *testing.T) {
 					withGfal2ClientNoRetries(t)
 
 				mockCleanupFuncs := []mockCleanup{
-					writeGoodHtgettoken(t),           // Mock a working htgettoken command
-					writeFakeGfalLsReturnsOneFile(t), // Mock a gfal-ls command that prints some files
-					writeFakeGoodCondorStatus(t),     // Mock a good condor_status command
+					writeGoodHtgettoken(t), // Mock a working htgettoken command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),              // Mock a gfal-ls command that returns one file
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
 					writeFakeCondorQScript(t, strings.NewReader(`#!/bin/sh
 					exit 1`)), // Mock a failing condor_q command
 				}
@@ -198,9 +198,9 @@ func TestRun(t *testing.T) {
 					withGfal2ClientNoRetries(t)
 
 				mockCleanupFuncs := []mockCleanup{
-					writeGoodHtgettoken(t),           // Mock a working htgettoken command
-					writeFakeGfalLsReturnsOneFile(t), // Mock a gfal-ls command that prints some files
-					writeFakeGoodCondorStatus(t),     // Mock a good condor_status command
+					writeGoodHtgettoken(t), // Mock a working htgettoken command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),              // Mock a gfal-ls command that returns one file
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
 					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
 					cat %s
 					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads")))), // Mock a working condor_q command
@@ -226,9 +226,9 @@ func TestRun(t *testing.T) {
 					withGfal2ClientNoRetries(t)
 
 				mockCleanupFuncs := []mockCleanup{
-					writeGoodHtgettoken(t),           // Mock a working htgettoken command
-					writeFakeGfalLsReturnsOneFile(t), // Mock a gfal-ls command that prints some files
-					writeFakeGoodCondorStatus(t),     // Mock a good condor_status command
+					writeGoodHtgettoken(t), // Mock a working htgettoken command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),              // Mock a gfal-ls command that returns one file
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
 					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
 					cat %s
 					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
@@ -255,9 +255,9 @@ func TestRun(t *testing.T) {
 					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
-					writeGoodHtgettoken(t),           // Mock a working htgettoken command
-					writeFakeGfalLsReturnsOneFile(t), // Mock a gfal-ls command that prints some files
-					writeFakeGoodCondorStatus(t),     // Mock a good condor_status command
+					writeGoodHtgettoken(t), // Mock a working htgettoken command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),              // Mock a gfal-ls command that returns one file
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
 					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
 					cat %s
 					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
@@ -284,9 +284,9 @@ func TestRun(t *testing.T) {
 					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
-					writeGoodHtgettoken(t),                       // Mock a working htgettoken command
-					writeFakeGfalLsReturnsFaultyFileForDelete(t), // Mock a gfal-ls command that prints a file, but one that can't be deleted
-					writeFakeGoodCondorStatus(t),                 // Mock a good condor_status command
+					writeGoodHtgettoken(t), // Mock a working htgettoken command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-badfile-cant_delete")),  // Mock a gfal-ls command that returns one file that can't be deleted
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
 					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
 					cat %s
 					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
@@ -313,9 +313,9 @@ func TestRun(t *testing.T) {
 					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
-					writeGoodHtgettoken(t),                 // Mock a working htgettoken command
-					writeFakeGfalLsReturnsOneFileOneDir(t), // Mock a gfal-ls command that prints some files
-					writeFakeGoodCondorStatus(t),           // Mock a good condor_status command
+					writeGoodHtgettoken(t), // Mock a working htgettoken command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile-onedir")),       // Mock a gfal-ls command that returns one file and one dir that can both be deleted
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
 					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
 					cat %s
 					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
@@ -438,172 +438,16 @@ func writeGoodHtgettoken(t *testing.T) mockCleanup {
 	return writeHtgettokenTestScript(t, 0)
 }
 
-func writeFakeBadGfalLs(t *testing.T) mockCleanup {
+func useFakeExecutable(t *testing.T, exeName, filename string) mockCleanup {
 	t.Helper()
-	temp := t.TempDir()
-	oldPath, ok := exeMap["gfal-ls"]
+	oldPath, ok := exeMap[exeName]
 	cleanupFunc := func() {
 		if ok {
-			exeMap["gfal-ls"] = oldPath // Restore original gfal-ls command after our test
+			exeMap[exeName] = oldPath // Restore original command after our test
 			return
 		}
-		delete(exeMap, "gfal-ls") // Remove gfal-ls from exeMap if it was not set
+		delete(exeMap, exeName) // Remove command from exeMap if it was not set
 	}
-	gfalLsPath := filepath.Join(temp, "gfal-ls")
-	failingScript := `#!/bin/sh
-	exit 1
-	`
-	if err := os.WriteFile(gfalLsPath, []byte(failingScript), 0755); err != nil {
-		t.Fatalf("failed to write mock gfal-ls script: %v", err)
-	}
-	exeMap["gfal-ls"] = gfalLsPath
-	return cleanupFunc
-}
-
-func writeFakeGfalLsReturnsNoFiles(t *testing.T) mockCleanup {
-	t.Helper()
-	temp := t.TempDir()
-	oldPath, ok := exeMap["gfal-ls"]
-	cleanupFunc := func() {
-		if ok {
-			exeMap["gfal-ls"] = oldPath // Restore original gfal-ls command after our test
-			return
-		}
-		delete(exeMap, "gfal-ls") // Remove gfal-ls from exeMap if it was not set
-	}
-	gfalLsPath := filepath.Join(temp, "gfal-ls")
-	script := `#!/bin/sh
-	exit 0
-	`
-	if err := os.WriteFile(gfalLsPath, []byte(script), 0755); err != nil {
-		t.Fatalf("failed to write mock gfal-ls script: %v", err)
-	}
-	exeMap["gfal-ls"] = gfalLsPath
-	return cleanupFunc
-}
-
-func writeFakeGfalLsReturnsOneFile(t *testing.T) mockCleanup {
-	t.Helper()
-	temp := t.TempDir()
-	oldPath, ok := exeMap["gfal-ls"]
-	cleanupFunc := func() {
-		if ok {
-			exeMap["gfal-ls"] = oldPath // Restore original gfal-ls command after our test
-			return
-		}
-		delete(exeMap, "gfal-ls") // Remove gfal-ls from exeMap if it was not set
-	}
-	gfalLsPath := filepath.Join(temp, "gfal-ls")
-	script := `#!/bin/sh
-	echo "-rwxrwxrwx   0 0     0            50 Sep 26 14:55 file1"
-	exit 0
-	`
-	if err := os.WriteFile(gfalLsPath, []byte(script), 0755); err != nil {
-		t.Fatalf("failed to write mock gfal-ls script: %v", err)
-	}
-	exeMap["gfal-ls"] = gfalLsPath
-	return cleanupFunc
-}
-
-// TODO Consolidate this and last two funcs to read test data
-func writeFakeGfalLsReturnsOneFileOneDir(t *testing.T) mockCleanup {
-	t.Helper()
-	temp := t.TempDir()
-	oldPath, ok := exeMap["gfal-ls"]
-	cleanupFunc := func() {
-		if ok {
-			exeMap["gfal-ls"] = oldPath // Restore original gfal-ls command after our test
-			return
-		}
-		delete(exeMap, "gfal-ls") // Remove gfal-ls from exeMap if it was not set
-	}
-	gfalLsPath := filepath.Join(temp, "gfal-ls")
-	// We're purposefully mocking this script so that dir1 looks empty to our gfal2Client
-	script := `#!/bin/sh
-	filearg="$2"
-	if [ "$filearg" = "http://localhost:8080/testexperiment/resilient/jobsub_stage/" ]
-	then
-		echo "-rwxrwxrwx   0 0     0            50 Sep 26 14:55 file1"
-		echo "drwxrwxrwx   0 0     0            50 Sep 26 14:55 dir1"
-	elif [ "$filearg" = "http://localhost:8080/testexperiment/resilient/jobsub_stage/dir1/" ]
-	then
-		echo ""
-	fi
-	exit 0
-	`
-	if err := os.WriteFile(gfalLsPath, []byte(script), 0755); err != nil {
-		t.Fatalf("failed to write mock gfal-ls script: %v", err)
-	}
-	exeMap["gfal-ls"] = gfalLsPath
-	return cleanupFunc
-}
-
-func writeFakeGfalLsReturnsFaultyFileForDelete(t *testing.T) mockCleanup {
-	t.Helper()
-	temp := t.TempDir()
-	oldPath, ok := exeMap["gfal-ls"]
-	cleanupFunc := func() {
-		if ok {
-			exeMap["gfal-ls"] = oldPath // Restore original gfal-ls command after our test
-			return
-		}
-		delete(exeMap, "gfal-ls") // Remove gfal-ls from exeMap if it was not set
-	}
-	gfalLsPath := filepath.Join(temp, "gfal-ls")
-	// The file shown here won't be in the dCache server
-	script := `#!/bin/sh
-		echo "-rwxrwxrwx   0 0     0            50 Sep 26 14:55 file2"
-	exit 0
-	`
-	if err := os.WriteFile(gfalLsPath, []byte(script), 0755); err != nil {
-		t.Fatalf("failed to write mock gfal-ls script: %v", err)
-	}
-	exeMap["gfal-ls"] = gfalLsPath
-	return cleanupFunc
-}
-
-func writeFakeBadCondorStatus(t *testing.T) mockCleanup {
-	t.Helper()
-	temp := t.TempDir()
-	oldPath, ok := exeMap["condor_status"]
-	cleanupFunc := func() {
-		if ok {
-			exeMap["condor_status"] = oldPath // Restore original condor_status command after our test
-			return
-		}
-		delete(exeMap, "condor_status") // Remove condor_status from exeMap if it was not set
-	}
-	condorStatusPath := filepath.Join(temp, "condor_status")
-	failingScript := `#!/bin/sh
-	exit 1
-	`
-	if err := os.WriteFile(condorStatusPath, []byte(failingScript), 0755); err != nil {
-		t.Fatalf("failed to write mock condor_status script: %v", err)
-	}
-	exeMap["condor_status"] = condorStatusPath
-	return cleanupFunc
-}
-
-func writeFakeGoodCondorStatus(t *testing.T) mockCleanup {
-	t.Helper()
-	temp := t.TempDir()
-	oldPath, ok := exeMap["condor_status"]
-	cleanupFunc := func() {
-		if ok {
-			exeMap["condor_status"] = oldPath // Restore original condor_status command after our test
-			return
-		}
-		delete(exeMap, "condor_status") // Remove condor_status from exeMap if it was not set
-	}
-	condorStatusPath := filepath.Join(temp, "condor_status")
-	fakeAdsFile := filepath.Join("testData", "condorOutput", "condor_status_mock_ads")
-	workingScript := fmt.Sprintf(`#!/bin/sh
-	cat %s
-	exit 0
-	`, fakeAdsFile)
-	if err := os.WriteFile(condorStatusPath, []byte(workingScript), 0755); err != nil {
-		t.Fatalf("failed to write mock condor_status script: %v", err)
-	}
-	exeMap["condor_status"] = condorStatusPath
+	exeMap[exeName] = filename
 	return cleanupFunc
 }

@@ -1,0 +1,13 @@
+#!/bin/sh
+
+# We're purposefully mocking this script so that dir1 looks empty to our gfal2Client
+filearg="$2"
+if [ "$filearg" = "http://localhost:8080/testexperiment/resilient/jobsub_stage/" ]
+then
+    echo "-rwxrwxrwx   0 0     0            50 Sep 26 14:55 file1"
+    echo "drwxrwxrwx   0 0     0            50 Sep 26 14:55 dir1"
+elif [ "$filearg" = "http://localhost:8080/testexperiment/resilient/jobsub_stage/dir1/" ]
+then
+    echo ""
+fi
+exit 0

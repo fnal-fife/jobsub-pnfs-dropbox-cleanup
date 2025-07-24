@@ -395,7 +395,7 @@ func (k *testKoanf) withVaultToken(t *testing.T, exists bool) *testKoanf {
 
 func (k *testKoanf) withBearerToken(t *testing.T) *testKoanf {
 	t.Helper()
-	bearerTokenPath := filepath.Join("testData", "testTokens", "goodToken")
+	bearerTokenPath := filepath.Join("internal", "testtokens", "goodToken")
 	k.ko.Set("vault.bearerTokenFile", bearerTokenPath)
 	k.ko.Set("vault.experiment", "testexperiment")
 	return k

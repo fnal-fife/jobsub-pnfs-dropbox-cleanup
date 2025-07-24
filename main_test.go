@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/knadh/koanf/v2"
@@ -173,8 +172,7 @@ func TestRun(t *testing.T) {
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
 					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),              // Mock a gfal-ls command that returns one file
 					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
-					writeFakeCondorQScript(t, strings.NewReader(`#!/bin/sh
-					exit 1`)), // Mock a failing condor_q command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "exit1")),                       // Mock a failing condor_q command
 				}
 
 				cleanupFunc := func() {
@@ -201,9 +199,7 @@ func TestRun(t *testing.T) {
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
 					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),              // Mock a gfal-ls command that returns one file
 					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
-					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
-					cat %s
-					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads")))), // Mock a working condor_q command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads")),           // Mock a condor_q command that returns the same file as gfal-ls
 				}
 
 				cleanupFunc := func() {
@@ -227,11 +223,9 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),              // Mock a gfal-ls command that returns one file
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
-					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
-					cat %s
-					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),               // Mock a gfal-ls command that returns one file
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a condor_q command that returns the same file as gfal-ls
 				}
 
 				cleanupFunc := func() {
@@ -256,11 +250,9 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),              // Mock a gfal-ls command that returns one file
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
-					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
-					cat %s
-					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),               // Mock a gfal-ls command that returns one file
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a condor_q command that returns the same file as gfal-ls
 				}
 
 				cleanupFunc := func() {
@@ -285,11 +277,9 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-badfile-cant_delete")),  // Mock a gfal-ls command that returns one file that can't be deleted
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
-					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
-					cat %s
-					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-badfile-cant_delete")),   // Mock a gfal-ls command that returns one file that can't be deleted
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a working condor_q command
 				}
 
 				cleanupFunc := func() {
@@ -314,11 +304,9 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile-onedir")),       // Mock a gfal-ls command that returns one file and one dir that can both be deleted
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
-					writeFakeCondorQScript(t, strings.NewReader(fmt.Sprintf(`#!/bin/sh
-					cat %s
-					exit 0`, filepath.Join("testData", "condorOutput", "condor_q_mock_ads_empty_pnfs")))), // Mock a working condor_q command
+					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile-onedir")),        // Mock a gfal-ls command that returns one file and one dir that can both be deleted
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a working condor_q command
 				}
 
 				cleanupFunc := func() {
@@ -438,6 +426,8 @@ func writeGoodHtgettoken(t *testing.T) mockCleanup {
 	return writeHtgettokenTestScript(t, 0)
 }
 
+// useFakeExecutable is a helper function to mock an executable command in the test environment by changing the exeMap map.
+// It returns a cleanup function that restores the original command path after the test.
 func useFakeExecutable(t *testing.T, exeName, filename string) mockCleanup {
 	t.Helper()
 	oldPath, ok := exeMap[exeName]

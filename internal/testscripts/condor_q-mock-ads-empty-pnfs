@@ -1,0 +1,4 @@
+#!/bin/sh
+
+cat internal/testscripts/data/condor_q-mock-ads-empty-pnfs
+exit 0

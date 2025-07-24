@@ -1,0 +1,4 @@
+#!/bin/sh
+
+cat internal/testscripts/data/condor_q-mock-ads
+exit 0

@@ -3,9 +3,14 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,13 +41,14 @@ func init() {
 
 // dCacheClient is a client for interacting with dCache via HTTP API. It uses a token for authentication.
 type dCacheClient struct {
-	client   *http.Client
-	token    string
-	authFunc func(*http.Request) error
+	client      *http.Client
+	token       string
+	authFunc    func(*http.Request) error
+	apiEndpoint string // The API endpoint for dCache, e.g., "/api/v1/namespace/"
 }
 
 // newDCacheClient creates a new dCacheClient instance. It sets up the HTTP client with TLS configuration
-func newDCacheClient(token string, skipTlsVerify bool) *dCacheClient {
+func newDCacheClient(token, apiEndpoint string, skipTlsVerify bool) *dCacheClient {
 	d := &dCacheClient{
 		client: &http.Client{
 			Transport: &http.Transport{
@@ -51,7 +57,8 @@ func newDCacheClient(token string, skipTlsVerify bool) *dCacheClient {
 				},
 			},
 		},
-		token: strings.TrimSpace(token),
+		token:       strings.TrimSpace(token),
+		apiEndpoint: apiEndpoint,
 	}
 	if err := d.setTokenAuth(); err != nil {
 		slog.Error("Failed to set token auth for dCache client", "error", err)

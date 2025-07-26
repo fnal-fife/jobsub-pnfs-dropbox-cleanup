@@ -242,7 +242,7 @@ func (g *gfal2Client) fileListingToFileEntry(line string, filenameTransformFunc 
 		return nil, errParseLine
 	}
 
-	f.created, err = g.parseDateStampToTime(dateString)
+	f.modified, err = g.parseDateStampToTime(dateString)
 	if err != nil {
 		return nil, errParseLine
 	}

@@ -13,7 +13,7 @@ var (
 // FileEntry is a directory file listing. It implements the fs.DirEntry interface
 type FileEntry struct {
 	filename      string
-	created       time.Time
+	modified      time.Time
 	isDirectory   bool
 	containsFiles []*FileEntry
 	parent        *FileEntry
@@ -24,7 +24,7 @@ func fileIsRecent(f *FileEntry, ageCutoff time.Duration) bool {
 	if ageCutoff <= 0 {
 		ageCutoff = defaultRecentDuration
 	}
-	return now.Sub(f.created) < ageCutoff
+	return now.Sub(f.modified) < ageCutoff
 }
 
 func (f *FileEntry) Name() string {
@@ -58,7 +58,7 @@ func (f *FileEntry) Mode() fs.FileMode {
 }
 
 func (f *FileEntry) ModTime() time.Time {
-	return f.created
+	return f.modified
 }
 
 func (f *FileEntry) Sys() any {
@@ -70,5 +70,5 @@ func (f *FileEntry) String() string {
 	if f.parent != nil {
 		parentName = f.parent.Name()
 	}
-	return fmt.Sprintf("name:%s\tdate:%s\tisDir:%t\tcontainsFiles:%v\tparentName:%s\n", f.filename, f.created, f.isDirectory, f.containsFiles, parentName)
+	return fmt.Sprintf("name:%s\tdate:%s\tisDir:%t\tcontainsFiles:%v\tparentName:%s\n", f.filename, f.modified, f.isDirectory, f.containsFiles, parentName)
 }

@@ -90,6 +90,7 @@ var (
 	)
 )
 
+// TODO - should we move some of this stuff into run()?  Like flag parsing, config loading, etc.?
 func main() {
 	// Read flags
 	f := flag.NewFlagSet("jobsub-pnfs-dropbox-cleanup", flag.ContinueOnError)
@@ -421,7 +422,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		funcLogger.Info("Running in test mode. No files will be deleted")
 		funcLogger.Info("Would have deleted the following files:")
 		for name := range fileMap {
-			funcLogger.Info(name, "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
+			funcLogger.Info(name, "filename", name, "modified", fileMap[name].modified, "isDirectory", fileMap[name].isDirectory)
 		}
 		funcLogger.Info("Stopping here")
 		promDuration.WithLabelValues("filterFiles").Set(time.Since(startFilterFiles).Seconds())
@@ -430,7 +431,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 	funcLogger.Debug("Remaining files to delete:")
 	for name := range fileMap {
-		funcLogger.Debug("", "filename", name, "created", fileMap[name].created, "isDirectory", fileMap[name].isDirectory)
+		funcLogger.Debug("", "filename", name, "modified", fileMap[name].modified, "isDirectory", fileMap[name].isDirectory)
 	}
 
 	promDuration.WithLabelValues("filterFiles").Set(time.Since(startFilterFiles).Seconds())
@@ -464,7 +465,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		}
 		deletedFilenames = append(deletedFilenames, filename)
 		numFilesDeleted.WithLabelValues(k.String("experiment")).Inc()
-		funcLogger.Info("File deleted", "filename", filename, "dateCreated", fileMap[filename].created)
+		funcLogger.Info("File deleted", "filename", filename, "datemodified", fileMap[filename].modified)
 	}
 
 	for _, filename := range deletedFilenames {
@@ -502,7 +503,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		}
 
 		numFilesDeleted.WithLabelValues(k.String("experiment")).Inc()
-		funcLogger.Info("Empty directory deleted", "dirName", filename, "dateCreated", fileMap[filename].created)
+		funcLogger.Info("Empty directory deleted", "dirName", filename, "datemodified", fileMap[filename].modified)
 
 		// Make sure we don't delete root
 		// Keep walking up the tree and deleting empty directories recursively
@@ -538,7 +539,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 				break
 			}
 			numFilesDeleted.WithLabelValues(k.String("experiment")).Inc()
-			funcLogger.Info("Empty directory deleted", "dirName", _parent.Name(), "dateCreated", fileMap[filename].created)
+			funcLogger.Info("Empty directory deleted", "dirName", _parent.Name(), "datemodified", fileMap[filename].modified)
 			_parent = _parent.parent
 		}
 	}

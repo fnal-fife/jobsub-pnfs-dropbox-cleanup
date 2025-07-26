@@ -1,0 +1,56 @@
+{
+  "fileMimeType" : "application/vnd.dcache.folder",
+  "children" : [ {
+    "fileName" : "file1",
+    "fileMimeType" : "application/octet-stream",
+    "labels" : [ ],
+    "size" : 7,
+    "creationTime" : 1753116816356,
+    "fileType" : "REGULAR",
+    "pnfsId" : "12345",
+    "nlink" : 1,
+    "mtime" : 1753116816382,
+    "mode" : 436
+  }, {
+    "fileName" : "file1b",
+    "fileMimeType" : "application/octet-stream",
+    "labels" : [ ],
+    "size" : 7,
+    "creationTime" : 1753116816596,
+    "fileType" : "REGULAR",
+    "pnfsId" : "123456",
+    "nlink" : 1,
+    "mtime" : 1753116816382,
+    "mode" : 436
+  }, {
+    "fileName" : "dir1",
+    "fileMimeType" : "application/vnd.dcache.folder",
+    "labels" : [ ],
+    "size" : 512,
+    "creationTime" : 1753116815697,
+    "fileType" : "DIR",
+    "pnfsId" : "1234567",
+    "nlink" : 2,
+    "mtime" : 1753116816382,
+    "mode" : 509
+  }, {
+    "fileName" : "dir2",
+    "fileMimeType" : "application/vnd.dcache.folder",
+    "labels" : [ ],
+    "size" : 512,
+    "creationTime" : 1753116815870,
+    "fileType" : "DIR",
+    "pnfsId" : "12345678",
+    "nlink" : 2,
+    "mtime" : 1753116816382,
+    "mode" : 509
+  } ],
+  "labels" : [ ],
+  "size" : 512,
+  "creationTime" : 1753116815697,
+  "fileType" : "DIR",
+  "pnfsId" : "1234567abc",
+  "nlink" : 2,
+  "mtime" : 1753116816382,
+  "mode" : 509
+}

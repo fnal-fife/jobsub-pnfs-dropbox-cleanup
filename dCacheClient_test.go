@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -49,7 +50,8 @@ func TestDcacheClientRemoveFile(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			client := newDCacheClient("test-token", true)
+			t.Parallel() // Run tests in parallel
+			client := newDCacheClient("test-token", "", true)
 			err := client.removeFile(tc.ctx, tc.urlPath)
 
 			if tc.assertNoError {
@@ -98,6 +100,7 @@ func TestDCacheClientSetTokenAuth(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
+			t.Parallel()
 			client := &dCacheClient{
 				client: &http.Client{
 					Transport: &http.Transport{

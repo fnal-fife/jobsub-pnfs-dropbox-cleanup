@@ -287,7 +287,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	addedEnvironment := []string{"BEARER_TOKEN=" + string(tok)}
 
 	gClient := newGfal2Client(k.Int("totalFileCountLimit"), uint(k.Int("gfal2.retryCount")), retryDuration, addedEnvironment)
-	dClient := newDCacheClient(string(tok), true)
+	dClient := newDCacheClient(string(tok), "", true)
 
 	exptNameOverride := k.StringMap("exptNameOverride")
 	exptArea := k.String("experiment") + "/resilient/jobsub_stage/"
@@ -465,7 +465,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		}
 		deletedFilenames = append(deletedFilenames, filename)
 		numFilesDeleted.WithLabelValues(k.String("experiment")).Inc()
-		funcLogger.Info("File deleted", "filename", filename, "datemodified", fileMap[filename].modified)
+		funcLogger.Info("File deleted", "filename", filename, "dateModified", fileMap[filename].modified)
 	}
 
 	for _, filename := range deletedFilenames {
@@ -503,7 +503,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		}
 
 		numFilesDeleted.WithLabelValues(k.String("experiment")).Inc()
-		funcLogger.Info("Empty directory deleted", "dirName", filename, "datemodified", fileMap[filename].modified)
+		funcLogger.Info("Empty directory deleted", "dirName", filename, "dateModified", fileMap[filename].modified)
 
 		// Make sure we don't delete root
 		// Keep walking up the tree and deleting empty directories recursively
@@ -539,7 +539,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 				break
 			}
 			numFilesDeleted.WithLabelValues(k.String("experiment")).Inc()
-			funcLogger.Info("Empty directory deleted", "dirName", _parent.Name(), "datemodified", fileMap[filename].modified)
+			funcLogger.Info("Empty directory deleted", "dirName", _parent.Name(), "dateModified", fileMap[filename].modified)
 			_parent = _parent.parent
 		}
 	}

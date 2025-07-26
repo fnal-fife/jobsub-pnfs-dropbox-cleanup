@@ -2,6 +2,7 @@ package testserver
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,8 +13,15 @@ import (
 // StartServer starts a simple HTTP server for testing purposes. It runs on loacalhost:8080.
 // The server has a readiness endpoint at /ready and the following test endpoints:
 //
-//	/testexperiment/resilient/jobsub_stage/file1
-//	/testexperiment/resilient/jobsub_stage/dir1
+//	/testexperiment/resilient/jobsub_stage/ (GET, DELETE (should return 500))
+//	/testexperiment/resilient/jobsub_stage/file1 (DELETE)
+//	/testexperiment/resilient/jobsub_stage/dir1 (GET, DELETE)
+//	/testexperiment/resilient/jobsub_stage/dir2 (empty) (GET, DELETE)
+//	/api/testexperiment/resilient/jobsub_stage/ (GET, DELETE (should return 500))
+//	/api/testexperiment/resilient/jobsub_stage/file1 (DELETE)
+//	/api/testexperiment/resilient/jobsub_stage/dir1 (GET, DELETE)
+//	/api/testexperiment/resilient/jobsub_stage/dir2 (empty) (GET, DELETE)
+//	/api/testexperiment/resilient/jobsub_stage/invalidfiledir (GET)
 //
 // To shut down the server, the caller should cancel the input context ctx. StartServer
 // returns a channel, shutdown, that is closed when the server is shut down,
@@ -29,8 +37,20 @@ func StartServer(ctx context.Context) (shutdown chan struct{}, startupErr error)
 
 	// Handlers
 	mux.HandleFunc("/ready", handleReady)
+
+	// Handlers for the test endpoints in the case of direct WebDAV access
+	mux.HandleFunc("/testexperiment/resilient/jobsub_stage/", handleJobsubStage)
 	mux.HandleFunc("/testexperiment/resilient/jobsub_stage/file1", handleFile1)
 	mux.HandleFunc("/testexperiment/resilient/jobsub_stage/dir1", handleDir1)
+	mux.HandleFunc("/testexperiment/resilient/jobsub_stage/dir2", handleDir2)
+
+	// REST API endpoints that just do the same as the handlers above
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/", handleJobsubStage)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/file1", handleFile1)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/dir1", handleDir1)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/dir2", handleDir2)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/invalidfiledir", handleDirInvalidFileDir)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/emptyPage", handleEmptyPage)
 
 	// Start the server in a goroutine
 	go func() {
@@ -86,7 +106,33 @@ func StartServer(ctx context.Context) (shutdown chan struct{}, startupErr error)
 }
 
 func handleReady(w http.ResponseWriter, r *http.Request) {
+	slog.Info("Received GET request for /ready")
 	fmt.Fprintln(w, "ready")
+}
+
+func handleEmptyPage(w http.ResponseWriter, r *http.Request) {
+	slog.Info("Received GET request for /api/testexperiment/resilient/jobsub_stage/emptyPage")
+	w.WriteHeader(http.StatusOK)
+}
+
+//go:embed data/jobsub_stage.json
+var getJobsubStageResponse string
+
+func handleJobsubStage(w http.ResponseWriter, r *http.Request) {
+	// /testexperiment/resilient/jobsub_stage/
+	if r.Method == http.MethodGet {
+		slog.Info("Received GET request for /testexperiment/resilient/jobsub_stage/")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, getJobsubStageResponse)
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		slog.Error("Received DELETE request for /testexperiment/resilient/jobsub_stage/file1")
+		slog.Error("Should not delete this directory")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }
 
 func handleFile1(w http.ResponseWriter, r *http.Request) {
@@ -97,10 +143,54 @@ func handleFile1(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+//go:embed data/dir1.json
+var getDir1Response string
+
 func handleDir1(w http.ResponseWriter, r *http.Request) {
 	// /testexperiment/resilient/jobsub_stage/dir1
+	if r.Method == http.MethodGet {
+		slog.Info("Received GET request for /testexperiment/resilient/jobsub_stage/dir1")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, getDir1Response)
+		return
+	}
+
 	if r.Method == http.MethodDelete {
 		slog.Info("Received DELETE request for /testexperiment/resilient/jobsub_stage/dir1")
 		w.WriteHeader(http.StatusNoContent)
+		return
 	}
+}
+
+//go:embed data/dir2.json
+var getDir2Response string
+
+func handleDir2(w http.ResponseWriter, r *http.Request) {
+	// /testexperiment/resilient/jobsub_stage/dir1
+	if r.Method == http.MethodGet {
+		slog.Info("Received GET request for /testexperiment/resilient/jobsub_stage/dir2")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, getDir2Response)
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		slog.Info("Received DELETE request for /testexperiment/resilient/jobsub_stage/dir1")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+}
+
+//go:embed data/invalid_file.json
+var getInvalidFileDirResponse string
+
+func handleDirInvalidFileDir(w http.ResponseWriter, r *http.Request) {
+	// /testexperiment/resilient/jobsub_stage/dir1
+	if r.Method == http.MethodGet {
+		slog.Info("Received GET request for /testexperiment/resilient/jobsub_stage/invalidfiledir")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, getInvalidFileDirResponse)
+		return
+	}
+
 }

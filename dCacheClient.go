@@ -29,8 +29,8 @@ var (
 // Steps:
 // 0. setTokenAuth func - DONE
 // 0. Check with delete method - DONE
-// 1. Get client working
-// 2. With recursion
+// 1. Get client working - DONE
+// 2. With recursion - DONE
 //4. with retries
 
 func init() {

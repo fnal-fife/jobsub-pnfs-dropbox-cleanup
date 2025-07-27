@@ -236,12 +236,12 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		funcLogger.Error("error parsing minimum vault token time left duration. Using default value", "error", err)
 		minTimeLeft = defaultVaultTokenTimeLeft
 	}
-	var retryDuration time.Duration
-	retryDuration, err = time.ParseDuration(k.String("gfal2.retrySleep"))
-	if err != nil {
-		funcLogger.Error("error parsing gfal2 retry sleep duration. Will use default", "error", err)
-		retryDuration = 0
-	}
+	// var retryDuration time.Duration
+	// retryDuration, err = time.ParseDuration(k.String("gfal2.retrySleep"))
+	// if err != nil {
+	// 	funcLogger.Error("error parsing gfal2 retry sleep duration. Will use default", "error", err)
+	// 	retryDuration = 0
+	// }
 	fileAgeCutoff, err := time.ParseDuration(k.String("deleteFilesOlderThan"))
 	if err != nil {
 		funcLogger.Error("error parsing configured file age cutoff duration", "error", err)
@@ -284,10 +284,15 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 	// 1. Get files list from pnfs dropbox
 	startGetDropboxFiles := time.Now()
-	addedEnvironment := []string{"BEARER_TOKEN=" + string(tok)}
+	// addedEnvironment := []string{"BEARER_TOKEN=" + string(tok)}
 
-	gClient := newGfal2Client(k.Int("totalFileCountLimit"), uint(k.Int("gfal2.retryCount")), retryDuration, addedEnvironment)
-	dClient := newDCacheClient(string(tok), "", true)
+	// gClient := newGfal2Client(k.Int("totalFileCountLimit"), uint(k.Int("gfal2.retryCount")), retryDuration, addedEnvironment)
+	apiEndpoint := k.String("dCache.apiEndpoint")
+	// TODO Make this a func?
+	apiEndpoint = "/" + strings.TrimLeft(apiEndpoint, "/")  // Ensure the API endpoint has only one leading slash
+	apiEndpoint = strings.TrimRight(apiEndpoint, "/") + "/" // Ensure the API endpoint has only one trailing slash
+
+	dClient := newDCacheClient(string(tok), apiEndpoint, true)
 
 	exptNameOverride := k.StringMap("exptNameOverride")
 	exptArea := k.String("experiment") + "/resilient/jobsub_stage/"
@@ -295,11 +300,11 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		exptArea = override
 	}
 
-	dCacheHostPort := strings.TrimRight(k.String("dCacheHostPort"), "/")
-	source := dCacheHostPort + "/" + exptArea
+	dCacheHostPort := strings.TrimRight(k.String("dCache.hostPort"), "/")
+	source := dCacheHostPort + apiEndpoint + exptArea
 
 	funcLogger.Info("Looking for files to delete in path", "dir", source, "experiment", k.String("experiment"))
-	filesList, err := gClient.getFilesList(ctx, source, nil, nil)
+	filesList, err := dClient.getFilesList(ctx, source, nil, nil)
 	var partialSuccessErr *errProcessingFiles
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):
@@ -447,7 +452,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	for filename := range fileMap.AllNonDirFilesNames() {
 		funcLogger.Debug("Deleting file:", "filename", filename)
 		// Remove the file
-		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
+		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, apiEndpoint, stripPNFSFromPath))
 		if err != nil {
 			funcLogger.Error("error deleting file", "error", err)
 			deleteFilesErrs.files = append(deleteFilesErrs.files, filename)
@@ -494,7 +499,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 		funcLogger.Debug("Deleting directory", "dirName", filename)
 		// Remove the file
-		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, stripPNFSFromPath))
+		err := dClient.removeFile(ctx, PNFSToHTTPS(filename, dCacheHostPort, apiEndpoint, stripPNFSFromPath))
 		if err != nil {
 			funcLogger.Error("error deleting directory", "error", err)
 			deleteFilesErrs.files = append(deleteFilesErrs.files, filename)
@@ -531,7 +536,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 			// Delete parent directory, since we've established that it's empty
 			funcLogger.Debug("Parent is empty, so we will delete it", "dirName", _parent.Name())
-			err := dClient.removeFile(ctx, PNFSToHTTPS(_parent.Name(), dCacheHostPort, stripPNFSFromPath))
+			err := dClient.removeFile(ctx, PNFSToHTTPS(_parent.Name(), dCacheHostPort, apiEndpoint, stripPNFSFromPath))
 			if err != nil {
 				funcLogger.Error("error deleting directory", "error", err)
 				deleteFilesErrs.files = append(deleteFilesErrs.files, _parent.Name())

@@ -108,13 +108,13 @@ func stripPNFSFromPath(pnfsPath string) string {
 // PNFSToHTTPS converts a given PNFS file path to an HTTPS URL using the specified host and port.
 // The function applies a filename transformation function to the PNFS path before joining it to the base URL.
 // If the provided urlHostPort is invalid, it logs an error and returns an empty string.
-func PNFSToHTTPS(pnfsPath string, urlHostPort string, filenameTransformFunc func(string) string) string {
+func PNFSToHTTPS(pnfsPath, urlHostPort, apiEndpoint string, filenameTransformFunc func(string) string) string {
 	u, err := url.Parse(urlHostPort)
 	if err != nil {
 		slog.Error("error parsing URL", "error", err)
 		return ""
 	}
-	return u.JoinPath(filenameTransformFunc(pnfsPath)).String()
+	return u.JoinPath(apiEndpoint, filenameTransformFunc(pnfsPath)).String()
 }
 
 func userConfigDir() string {

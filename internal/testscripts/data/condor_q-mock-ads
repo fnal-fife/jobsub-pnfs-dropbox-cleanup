@@ -3,7 +3,7 @@ Attr2 = "value2"
 IntAttr = 42
 ClusterId = 1
 ProcId = 0
-PNFS_INPUT_FILES = "/pnfs/testexperiment/resilient/jobsub_stage/file1,/pnfs/testexperiment/resilient/jobsub_stage/file2,/pnfs/testexperiment/resilient/jobsub_stage/file3"
+PNFS_INPUT_FILES = "/pnfs/testexperiment/resilient/jobsub_stage_only_file1/file1,/pnfs/testexperiment/resilient/jobsub_stage/file1,/pnfs/testexperiment/resilient/jobsub_stage/file2,/pnfs/testexperiment/resilient/jobsub_stage/file3"
 
 Attr1 = "value1b"
 Attr2 = "value2b"

@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// TODO Update the handler list
+// TODO see if we can consolidate/get rid of some of these handlers
+
 // StartServer starts a simple HTTP server for testing purposes. It runs on loacalhost:8080.
 // The server has a readiness endpoint at /ready and the following test endpoints:
 //
@@ -39,18 +42,29 @@ func StartServer(ctx context.Context) (shutdown chan struct{}, startupErr error)
 	mux.HandleFunc("/ready", handleReady)
 
 	// Handlers for the test endpoints in the case of direct WebDAV access
-	mux.HandleFunc("/testexperiment/resilient/jobsub_stage/", handleJobsubStage)
-	mux.HandleFunc("/testexperiment/resilient/jobsub_stage/file1", handleFile1)
-	mux.HandleFunc("/testexperiment/resilient/jobsub_stage/dir1", handleDir1)
-	mux.HandleFunc("/testexperiment/resilient/jobsub_stage/dir2", handleDir2)
+	// mux.HandleFunc("/testexperiment/resilient/jobsub_stage/", handleJobsubStage)
+	// mux.HandleFunc("/testexperiment/resilient/jobsub_stage/file1", handleFile1)
+	// mux.HandleFunc("/testexperiment/resilient/jobsub_stage/file1b", handleFile1b)
+	// mux.HandleFunc("/testexperiment/resilient/jobsub_stage/dir1", handleDir1)
+	// mux.HandleFunc("/testexperiment/resilient/jobsub_stage/dir1/file1a", handleDir1File1a)
+	// mux.HandleFunc("/testexperiment/resilient/jobsub_stage/dir2", handleDir2)
 
 	// REST API endpoints that just do the same as the handlers above
 	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/", handleJobsubStage)
 	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/file1", handleFile1)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/file1b", handleFile1b)
 	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/dir1", handleDir1)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/dir1/file1a", handleDir1File1a)
 	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/dir2", handleDir2)
 	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/invalidfiledir", handleDirInvalidFileDir)
 	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/emptyPage", handleEmptyPage)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/internalServerError", handleInternalServerError)
+
+	// REST API Endpoints that return spoofed data
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage_only_file1/file1", handleJobsubStageOnlyFile1File1)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage_only_file1", handleJobsubStageOnlyFile1)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage_only_file2/file2", handleJobsubStageOnlyFile2File2)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage_only_file2", handleJobsubStageOnlyFile2)
 
 	// Start the server in a goroutine
 	go func() {
@@ -136,10 +150,19 @@ func handleJobsubStage(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleFile1(w http.ResponseWriter, r *http.Request) {
-	// /testexperiment/resilient/jobsub_stage/file1
+	// /api/testexperiment/resilient/jobsub_stage/file1
 	if r.Method == http.MethodDelete {
 		slog.Info("Received DELETE request for /testexperiment/resilient/jobsub_stage/file1")
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleFile1b(w http.ResponseWriter, r *http.Request) {
+	// /api/testexperiment/resilient/jobsub_stage/file1b
+	if r.Method == http.MethodDelete {
+		slog.Info("Received DELETE request for /testexperiment/resilient/jobsub_stage/file1b")
+		w.WriteHeader(http.StatusNoContent)
+		return
 	}
 }
 
@@ -157,6 +180,15 @@ func handleDir1(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodDelete {
 		slog.Info("Received DELETE request for /testexperiment/resilient/jobsub_stage/dir1")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+}
+
+func handleDir1File1a(w http.ResponseWriter, r *http.Request) {
+	// /testexperiment/resilient/jobsub_stage/dir1/file1a
+	if r.Method == http.MethodDelete {
+		slog.Info("Received DELETE request for /testexperiment/resilient/jobsub_stage/dir1/file1a")
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -193,4 +225,65 @@ func handleDirInvalidFileDir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+func handleInternalServerError(w http.ResponseWriter, r *http.Request) {
+	// /api/testexperiment/resilient/jobsub_stage/internalServerError
+	slog.Error("Received request for /api/testexperiment/resilient/jobsub_stage/internalServerError")
+	w.WriteHeader(http.StatusInternalServerError)
+}
+
+//go:embed data/jobsub_stage_only_file1.json
+var getJobsubStageOnlyFile1Response string
+
+func handleJobsubStageOnlyFile1(w http.ResponseWriter, r *http.Request) {
+	// /api/testexperiment/resilient/jobsub_stage_only_file1
+	if r.Method == http.MethodGet {
+		slog.Info("Received GET request for /api/testexperiment/resilient/jobsub_stage_only_file1")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, getJobsubStageOnlyFile1Response)
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		slog.Info("Received DELETE request for /api/testexperiment/resilient/jobsub_stage_only_file1")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+}
+
+func handleJobsubStageOnlyFile1File1(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		slog.Info("Received DELETE request for /api/testexperiment/resilient/jobsub_stage_only_file1/file1")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+}
+
+//go:embed data/jobsub_stage_only_file2.json
+var getJobsubStageOnlyFile2Response string
+
+func handleJobsubStageOnlyFile2(w http.ResponseWriter, r *http.Request) {
+	// /api/testexperiment/resilient/jobsub_stage_only_file2
+	if r.Method == http.MethodGet {
+		slog.Info("Received GET request for /api/testexperiment/resilient/jobsub_stage_only_file2")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, getJobsubStageOnlyFile2Response)
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		slog.Info("Received DELETE request for /api/testexperiment/resilient/jobsub_stage_only_file2")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+}
+
+// This handler returns a 500 error for DELETE requests
+func handleJobsubStageOnlyFile2File2(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		slog.Info("Received DELETE request for /api/testexperiment/resilient/jobsub_stage_only_file2/file2")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }

@@ -43,7 +43,7 @@ func TestDcacheClientRemoveFile(t *testing.T) {
 		{
 			description:   "Delete file successfully",
 			ctx:           defaultContext,
-			urlPath:       "http://localhost:8080/testexperiment/resilient/jobsub_stage/file1",
+			urlPath:       "http://localhost:8080/api/testexperiment/resilient/jobsub_stage/file1",
 			assertNoError: true,
 		},
 	}

@@ -89,15 +89,14 @@ func TestRun(t *testing.T) {
 			description: "getting pnfs dropbox files fails",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
 				k := newTestKoanf(true).
-					withExperiment(t).
+					withExptOverride(t, "/testexperiment/resilient/jobsub_stage/internalServerError").
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t)
+					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "exit1")), // Mock a faulty gfal-ls command
 				}
 
 				cleanupFunc := func() {
@@ -113,15 +112,14 @@ func TestRun(t *testing.T) {
 			description: "getting pnfs dropbox files succeeds, but no files are returned",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
 				k := newTestKoanf(true).
-					withExperiment(t).
+					withExptOverride(t, "/testexperiment/resilient/jobsub_stage/dir2").
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t)
+					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "exit0")), // Mock a gfal-ls command where nothing is returned
 				}
 
 				cleanupFunc := func() {
@@ -141,12 +139,11 @@ func TestRun(t *testing.T) {
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t)
+					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")), // Mock a gfal-ls command that returns one file
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "exit1")),     // Mock a failing condor_status command
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "exit1")), // Mock a failing condor_status command
 				}
 
 				cleanupFunc := func() {
@@ -166,11 +163,10 @@ func TestRun(t *testing.T) {
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t)
+					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),              // Mock a gfal-ls command that returns one file
 					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
 					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "exit1")),                       // Mock a failing condor_q command
 				}
@@ -189,15 +185,14 @@ func TestRun(t *testing.T) {
 			description: "all files in dropbox list are used by jobs - no files to delete",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
 				k := newTestKoanf(true).
-					withExperiment(t).
+					withExptOverride(t, "/testexperiment/resilient/jobsub_stage_only_file1").
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t)
+					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),              // Mock a gfal-ls command that returns one file
 					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
 					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads")),           // Mock a condor_q command that returns the same file as gfal-ls
 				}
@@ -219,11 +214,10 @@ func TestRun(t *testing.T) {
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t)
+					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),               // Mock a gfal-ls command that returns one file
 					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
 					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a condor_q command that returns the same file as gfal-ls
 				}
@@ -241,16 +235,14 @@ func TestRun(t *testing.T) {
 			description: "NOT test mode - but there were only files, so we never try to delete directories",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
 				k := newTestKoanf(false).
-					withExperiment(t).
+					withExptOverride(t, "/testexperiment/resilient/jobsub_stage_only_file1").
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t).
 					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile")),               // Mock a gfal-ls command that returns one file
 					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
 					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a condor_q command that returns the same file as gfal-ls
 				}
@@ -268,16 +260,14 @@ func TestRun(t *testing.T) {
 			description: "NOT test mode - one file, but can't be deleted",
 			setupFunc: func(t *testing.T) (*koanf.Koanf, func()) {
 				k := newTestKoanf(false).
-					withExperiment(t).
+					withExptOverride(t, "/testexperiment/resilient/jobsub_stage_only_file2").
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t).
 					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-badfile-cant_delete")),   // Mock a gfal-ls command that returns one file that can't be deleted
 					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
 					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a working condor_q command
 				}
@@ -289,7 +279,7 @@ func TestRun(t *testing.T) {
 				}
 				return k.ko, cleanupFunc
 			},
-			expectedFileDeleteErrs: []string{"/pnfs/testexperiment/resilient/jobsub_stage/file2"},
+			expectedFileDeleteErrs: []string{"/pnfs/testexperiment/resilient/jobsub_stage_only_file2/file2"},
 		},
 		{
 			description: "NOT test mode - one file, one dir, should return nil error",
@@ -299,12 +289,10 @@ func TestRun(t *testing.T) {
 					withValidAgeCutoff(t).
 					withVaultToken(t, true).
 					withBearerToken(t).
-					withGfal2ClientNoRetries(t).
 					withTestDcacheServer(t)
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "gfal-ls", filepath.Join("internal", "testscripts", "gfal-ls-onefile-onedir")),        // Mock a gfal-ls command that returns one file and one dir that can both be deleted
 					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
 					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a working condor_q command
 				}
@@ -364,6 +352,13 @@ func (k *testKoanf) withExperiment(t *testing.T) *testKoanf {
 	return k
 }
 
+func (k *testKoanf) withExptOverride(t *testing.T, path string) *testKoanf {
+	t.Helper()
+	k.ko.Set("experiment", "testexperiment")
+	k.ko.Set("exptNameOverride.testexperiment", path)
+	return k
+}
+
 func (k *testKoanf) withValidAgeCutoff(t *testing.T) *testKoanf {
 	t.Helper()
 	k.ko.Set("deleteFilesOlderThan", "1s")
@@ -401,16 +396,10 @@ func (k *testKoanf) withBearerToken(t *testing.T) *testKoanf {
 	return k
 }
 
-func (k *testKoanf) withGfal2ClientNoRetries(t *testing.T) *testKoanf {
-	t.Helper()
-	k.ko.Set("gfal2.retryCount", 0)
-	k.ko.Set("gfal2.retrySleep", "1ns")
-	return k
-}
-
 func (k *testKoanf) withTestDcacheServer(t *testing.T) *testKoanf {
 	t.Helper()
-	k.ko.Set("dCacheHostPort", "http://localhost:8080")
+	k.ko.Set("dCache.hostPort", "http://localhost:8080")
+	k.ko.Set("dCache.apiEndpoint", "/api")
 	return k
 }
 

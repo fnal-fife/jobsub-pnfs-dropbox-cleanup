@@ -57,9 +57,16 @@ func newDCacheClient(token, apiEndpoint string, skipTlsVerify bool) *dCacheClien
 				},
 			},
 		},
-		token:       strings.TrimSpace(token),
-		apiEndpoint: apiEndpoint,
+		token: strings.TrimSpace(token),
 	}
+	if !strings.HasPrefix(apiEndpoint, "/") {
+		apiEndpoint = "/" + apiEndpoint // Ensure the API endpoint starts with a slash
+	}
+	if !strings.HasSuffix(apiEndpoint, "/") {
+		apiEndpoint += "/" // Ensure the API endpoint ends with a slash
+	}
+	d.apiEndpoint = apiEndpoint
+
 	if err := d.setTokenAuth(); err != nil {
 		slog.Error("Failed to set token auth for dCache client", "error", err)
 		return nil
@@ -103,6 +110,11 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
+	// Add query parameter to get children of directory
+	urlValues := req.URL.Query()
+	urlValues.Add("children", "true") // This is required to get the children of the directory
+	req.URL.RawQuery = urlValues.Encode()
+
 	// Set the auth header
 	if err = d.authFunc(req); err != nil {
 		return nil, fmt.Errorf("error setting authorization header for files list request: %w", err)
@@ -135,7 +147,6 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 		return nil, fmt.Errorf("request failed: %s: %s", resp.Status, msg)
 	}
 
-	// TODO check this error case
 	var listing dCacheDirListing
 	if err = json.NewDecoder(resp.Body).Decode(&listing); err != nil {
 		msg := "error reading dCache directory listing response"

@@ -1,0 +1,23 @@
+{
+  "fileMimeType" : "application/vnd.dcache.folder",
+  "children" : [ {
+    "fileName" : "file1",
+    "fileMimeType" : "application/octet-stream",
+    "labels" : [ ],
+    "size" : 7,
+    "creationTime" : 1753116816356,
+    "fileType" : "REGULAR",
+    "pnfsId" : "12345",
+    "nlink" : 1,
+    "mtime" : 1753116816382,
+    "mode" : 436
+  } ],
+  "labels" : [ ],
+  "size" : 512,
+  "creationTime" : 1753116815697,
+  "fileType" : "DIR",
+  "pnfsId" : "1234567abc",
+  "nlink" : 2,
+  "mtime" : 1753116816382,
+  "mode" : 509
+}

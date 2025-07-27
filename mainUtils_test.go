@@ -215,7 +215,7 @@ func TestGetScheddFiles(t *testing.T) {
 			description:         "schedd query succeeds",
 			authSetupFunc:       fakeGoodIDTokenAuthSetup,
 			condorQMockScript:   filepath.Join("internal", "testscripts", "condor_q-mock-ads"),
-			expectedFiles:       []string{"/pnfs/testexperiment/resilient/jobsub_stage/file1", "/pnfs/testexperiment/resilient/jobsub_stage/file2", "/pnfs/testexperiment/resilient/jobsub_stage/file3", "/pnfs/testexperiment/resilient/jobsub_stage/file1b", "/pnfs/testexperiment/resilient/jobsub_stage/file2b", "/pnfs/testexperiment/resilient/jobsub_stage/file3b"},
+			expectedFiles:       []string{"/pnfs/testexperiment/resilient/jobsub_stage_only_file1/file1", "/pnfs/testexperiment/resilient/jobsub_stage/file1", "/pnfs/testexperiment/resilient/jobsub_stage/file2", "/pnfs/testexperiment/resilient/jobsub_stage/file3", "/pnfs/testexperiment/resilient/jobsub_stage/file1b", "/pnfs/testexperiment/resilient/jobsub_stage/file2b", "/pnfs/testexperiment/resilient/jobsub_stage/file3b"},
 			expectedErrContains: "",
 		},
 	}

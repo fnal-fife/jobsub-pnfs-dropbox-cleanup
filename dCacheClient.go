@@ -11,7 +11,9 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -26,12 +28,18 @@ var (
 	})
 )
 
+var (
+	defaultRetrySleep    time.Duration = 5 * time.Second // Default sleep time between retries
+	defaultFileCountLeft int32         = 1000            // Default file count limit
+)
+
 // Steps:
 // 0. setTokenAuth func - DONE
 // 0. Check with delete method - DONE
 // 1. Get client working - DONE
 // 2. With recursion - DONE
-//4. with retries
+//4. with retries - done here, need to update run()
+// 5. Refactor code if needed, like moving PNFSToTHTTPS here, and docstrings
 
 func init() {
 	// Register the metrics
@@ -41,14 +49,19 @@ func init() {
 
 // dCacheClient is a client for interacting with dCache via HTTP API. It uses a token for authentication.
 type dCacheClient struct {
-	client      *http.Client
-	token       string
-	authFunc    func(*http.Request) error
-	apiEndpoint string // The API endpoint for dCache, e.g., "/api/v1/namespace/"
+	client         *http.Client
+	token          string
+	authFunc       func(*http.Request) error
+	apiEndpoint    string // The API endpoint for dCache, e.g., "/api/v1/namespace/"
+	fileCountLimit uint
+	fileCountLeft  atomic.Int32
+	retryCount     uint
+	retrySleep     time.Duration
 }
 
+// TODO Test all the cases of fileCountLimit, retryCount, retrySleep
 // newDCacheClient creates a new dCacheClient instance. It sets up the HTTP client with TLS configuration
-func newDCacheClient(token, apiEndpoint string, skipTlsVerify bool) *dCacheClient {
+func newDCacheClient(token, apiEndpoint string, fileCountLimit int, retryCount uint, retrySleep time.Duration, skipTlsVerify bool) *dCacheClient {
 	d := &dCacheClient{
 		client: &http.Client{
 			Transport: &http.Transport{
@@ -57,8 +70,11 @@ func newDCacheClient(token, apiEndpoint string, skipTlsVerify bool) *dCacheClien
 				},
 			},
 		},
-		token: strings.TrimSpace(token),
+		token:      strings.TrimSpace(token),
+		retryCount: retryCount,
+		retrySleep: defaultRetrySleep,
 	}
+
 	if !strings.HasPrefix(apiEndpoint, "/") {
 		apiEndpoint = "/" + apiEndpoint // Ensure the API endpoint starts with a slash
 	}
@@ -71,6 +87,19 @@ func newDCacheClient(token, apiEndpoint string, skipTlsVerify bool) *dCacheClien
 		slog.Error("Failed to set token auth for dCache client", "error", err)
 		return nil
 	}
+
+	if retrySleep > 0 {
+		d.retrySleep = retrySleep
+	}
+
+	if fileCountLimit <= 0 {
+		d.fileCountLimit = uint(defaultFileCountLeft)
+		d.fileCountLeft.Store(defaultFileCountLeft)
+		return d
+	}
+	d.fileCountLimit = uint(fileCountLimit)
+	d.fileCountLeft.Store(int32(fileCountLimit))
+
 	return d
 }
 
@@ -89,8 +118,11 @@ func (d *dCacheClient) setTokenAuth() error {
 	return nil
 }
 
-func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry) ([]*FileEntry, error) {
+// TODO pass in an excludeFunc that sees if the FileEntry is too old
+
+func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry, excludeFunc func(*FileEntry) bool) ([]*FileEntry, error) {
 	funcLogger := logger.With("caller", "dCacheClient.getFilesList")
+	// Check our context first
 	if err := ctx.Err(); err != nil {
 		msg := "context deadline exceeded before getting files list"
 		if errors.Is(err, context.Canceled) {
@@ -110,33 +142,48 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
-	// Add query parameter to get children of directory
+	// Add query parameters:
+	// 1. Get children of directory
+	// 2. Limit number of returned values to the current fileCountLimit
 	urlValues := req.URL.Query()
 	urlValues.Add("children", "true") // This is required to get the children of the directory
+	urlValues.Add("limit", strconv.Itoa(int(d.fileCountLeft.Load())))
 	req.URL.RawQuery = urlValues.Encode()
 
-	// Set the auth header
+	// Set the Authorization and Accept headers
+	// TODO Setting these headers should be a method on dCacheClient
 	if err = d.authFunc(req); err != nil {
 		return nil, fmt.Errorf("error setting authorization header for files list request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json") // Set the Accept header to application/json
 
-	// Perform the request
-	resp, err := d.client.Do(req)
-	if err != nil {
-		msg := "error sending HTTP request to get files"
-		errFields := []any{any("urlPath"), any(source)}
-		if resp != nil {
-			errFields = append(errFields, any("status"), any(resp.Status))
+	// Perform the request in a retry loop
+	var resp *http.Response
+	for i := range int(d.retryCount + 1) {
+		funcLogger.Debug("Sending request to get files list", "url", req.URL.String(), "attempt", i+1)
+		resp, err = d.client.Do(req)
+		if err != nil {
+			msg := "error sending HTTP request to get files"
+			errFields := []any{any("urlPath"), any(req.URL.String())}
+			if resp != nil {
+				errFields = append(errFields, any("status"), any(resp.Status))
+			}
+			errFields = append(errFields, any("error"), any(err))
+			funcLogger.Error(msg, errFields...)
+			if i < int(d.retryCount) {
+				funcLogger.Debug("Will sleep 5s and then retry command", "try", i+1, "maxRetries", d.retryCount)
+				time.Sleep(d.retrySleep) // Sleep before retrying
+				continue
+			}
+			funcLogger.Error("Max retries exceeded for request", "url", req.URL.String(), "error", err)
+			return nil, fmt.Errorf("%s: %w", msg, err)
 		}
-		errFields = append(errFields, any("error"), any(err))
-		funcLogger.Error(msg, errFields...)
-		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 	defer resp.Body.Close()
 
 	// Check the response status code
 	if resp.StatusCode != http.StatusOK {
+		// Read the response to get the error message
 		b := make([]byte, 0, resp.ContentLength)
 		_, err := resp.Body.Read(b)
 		msg := string(b)
@@ -147,6 +194,7 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 		return nil, fmt.Errorf("request failed: %s: %s", resp.Status, msg)
 	}
 
+	// Decode the response body into a dCacheDirListing struct
 	var listing dCacheDirListing
 	if err = json.NewDecoder(resp.Body).Decode(&listing); err != nil {
 		msg := "error reading dCache directory listing response"
@@ -154,28 +202,24 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 
-	// TODO Check this error case
 	sourceURL, err := url.Parse(source)
 	if err != nil {
+		// This should never really fail, but just in case, we'll log the error if it happens
 		funcLogger.Error("error parsing source URL", "source", source, "error", err)
 		return nil, fmt.Errorf("error parsing source URL: %w", err)
 	}
 
 	errs := make([]error, 0) // Errors while parsing files from directory
 
-	// Create FileEntry objects from the listing
-	// iterate through children and create FileEntry objects
 	for _, child := range listing.Children {
+		// Check our file count limit
+		funcLogger.Debug("File count left", "remaining", d.fileCountLeft.Load())
+
 		// Create a file entry for the child
-		// f, err  := &FileEntry{
-		entry, err := d.fileListingToFileEntry(child, func(s string) string {
-			return path.Join("/pnfs", d.trimAPIEndpoint(sourceURL.Path), s)
-		})
-		if errors.Is(err, errFileCountLimitExceeded) {
-			// We exceeded our file count limit, so we should stop
-			funcLogger.Debug("File count limit exceeded, stopping")
-			return dirContents, err
-		}
+		entry, err := d.fileListingToFileEntry(child,
+			func(s string) string {
+				return path.Join("/pnfs", d.trimAPIEndpoint(sourceURL.Path), s)
+			})
 		if err != nil {
 			// Handle error: print that there's an issue
 			funcLogger.Error("error parsing file listing entry", "error", err)
@@ -187,22 +231,44 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 		// If the child is a directory, recursively call getFilesList
 		if entry.isDirectory {
 			// Query the dCache server for the directory contents
+			// This should be a call to PNFSTOHTTPS, right?
 			fPath := strings.TrimPrefix(entry.filename, "/pnfs")
 			apiPath := d.pathToAPIURLPath(fPath)
 			newSource := sourceURL.Scheme + "://" + sourceURL.Host + apiPath
-			files, err := d.getFilesList(ctx, newSource, nil, entry)
+			files, err := d.getFilesList(ctx, newSource, nil, entry, excludeFunc)
 			if err != nil {
-				// Skip the directory
+				// If we hit the file count limit mid-directory, add the files that we got back from the getFilesList call, but do NOT add the directory, since the directory may not have been
+				// fully parsed.
+				// Then return what we have
+				if errors.Is(err, errFileCountLimitExceeded) {
+					funcLogger.Warn("File count limit exceeded mid-directory.", "directory", entry.filename)
+					dirContents = append(dirContents, files...)   // Add the files we got back from the getFilesList call
+					return dirContents, errFileCountLimitExceeded // Return what we have
+				}
+				// Otherwise, we just skip the whole directory and continue
 				funcLogger.Error("error getting files in directory. Moving to next entry", "directory", entry.filename, "error", err)
-				// TODO Bit about fileCountLImit
 				errs = append(errs, err)
 				continue
 			}
+			// We got all the files in the directory back without hitting the file count limit or encountering an error, so finish populating the dir entry
 			entry.containsFiles = files
 			dirContents = append(dirContents, files...) // Add the entries in this directory to the dirContents list before adding the directory itself
 		}
 
+		// If the entry is excluded by the excludeFunc, skip it
+		if excludeFunc != nil && excludeFunc(entry) {
+			funcLogger.Debug("Excluding file entry", "file", entry.filename)
+			continue
+		}
+
 		dirContents = append(dirContents, entry) // Add the file or current-level dir to dirContents
+
+		// Now we can decrement our file count limit counter, and then check if we hit the limit
+		d.fileCountLeft.Add(-1)
+		if d.fileCountLeft.Load() == 0 {
+			funcLogger.Warn("File count limit exceeded, stopping")
+			return dirContents, errFileCountLimitExceeded
+		}
 	}
 
 	// If we had any errors, we should tell the caller
@@ -269,27 +335,13 @@ var (
 
 type dCacheFileListing struct {
 	FileName string `json:"fileName"`
-	// FileMimeType string   `json:"-"`
-	// Labels       []string `json:"-"`
-	// Size         int64    `json:"-"`
-	// CreationTime int64    `json:"-"`
 	FileType string `json:"fileType"`
-	// PnfsId       string   `json:"-"`
-	// Nlink        int64    `json:"-"`
-	Mtime int64 `json:"mtime"`
-	// Mode         int64    `json:"-"`
+	Mtime    int64  `json:"mtime"`
 }
 type dCacheDirListing struct {
-	// FileMimeType string              `json:"-"`
 	Children []dCacheFileListing `json:"children"`
-	// Labels       []string            `json:"-"`
-	// Size         int64               `json:"-"`
-	// CreationTime int64               `json:"-"`
-	FileType string `json:"fileType"`
-	// PnfsId       string              `json:"-"`
-	// Nlink        int64               `json:"-"`
-	Mtime int64 `json:"mtime"`
-	// Mode         int64               `json:"-"`
+	FileType string              `json:"fileType"`
+	Mtime    int64               `json:"mtime"`
 }
 
 func (d *dCacheClient) fileListingToFileEntry(listing dCacheFileListing, filenameTransformFunc func(string) string) (*FileEntry, error) {
@@ -309,6 +361,8 @@ func (d *dCacheClient) fileListingToFileEntry(listing dCacheFileListing, filenam
 
 	return f, nil
 }
+
+// TODO - should we move PNFSToHTTPS here?
 
 func (d *dCacheClient) trimAPIEndpoint(urlPath string) string {
 	// Remove the API endpoint prefix from the endpoint

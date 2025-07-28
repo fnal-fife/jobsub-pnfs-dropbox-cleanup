@@ -22,13 +22,13 @@ import (
 
 var lineRegex = regexp.MustCompile(`((?:\w|-)+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\w+\s+\d+\s+(?:(?:\d+:\d+)|\d+))\s+(.+)`)
 
-var (
-	defaultRetrySleep    time.Duration = 5 * time.Second // Default sleep time between retries
-	defaultFileCountLeft int32         = 1000            // Default file count limit
-	// In our directory structure, we expect that each directory will most likely have at least
-	// 2 files (the directory itself and at least one file inside it).
-	defaultLenDirPlusFile int = 2
-)
+// var (
+// 	defaultRetrySleep    time.Duration = 5 * time.Second // Default sleep time between retries
+// 	defaultFileCountLeft int32         = 1000            // Default file count limit
+// 	// In our directory structure, we expect that each directory will most likely have at least
+// 	// 2 files (the directory itself and at least one file inside it).
+// 	defaultLenDirPlusFile int = 2
+// )
 
 var (
 	dateWithTimeNoYearLayout string = "Jan  2 15:04"

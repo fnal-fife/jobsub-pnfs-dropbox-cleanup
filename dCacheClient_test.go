@@ -51,7 +51,7 @@ func TestDcacheClientRemoveFile(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel() // Run tests in parallel
-			client := newDCacheClient("test-token", "", true)
+			client := newDCacheClient("test-token", "", -1, 0, 0, true)
 			err := client.removeFile(tc.ctx, tc.urlPath)
 
 			if tc.assertNoError {
@@ -144,9 +144,9 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 	// need some kind of struct to hold data, unmarshal it to fileEntry struct
 
 	// Cases:
-	// 1. Context checking
+	// 1a. Context checking
 	func() {
-		d := newDCacheClient("faketoken", "", true)
+		d := newDCacheClient("faketoken", "", -1, 0, 0, true)
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel() // Cancel the context to simulate a timeout or cancellation
 		expectedErr := context.Canceled
@@ -154,14 +154,14 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 		source := ""
 		dirContents := []*FileEntry{}
 		parent := &FileEntry{}
-		entries, err := d.getFilesList(ctx, source, dirContents, parent)
+		entries, err := d.getFilesList(ctx, source, dirContents, parent, nil)
 		assert.ErrorIs(t, err, expectedErr)
 		assert.ElementsMatch(t, entries, expectedEntries)
 	}()
 
 	// 2a. Run against invalid URL - can't create request.
 	func() {
-		d := newDCacheClient("faketoken", "", true)
+		d := newDCacheClient("faketoken", "", -1, 0, 0, true)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		expectedErrContains := "error creating HTTP request to get files list"
@@ -169,7 +169,7 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 		source := "\x00invalid-url"
 		dirContents := []*FileEntry{}
 		parent := &FileEntry{}
-		entries, err := d.getFilesList(ctx, source, dirContents, parent)
+		entries, err := d.getFilesList(ctx, source, dirContents, parent, nil)
 		assert.ErrorContains(t, err, expectedErrContains)
 		assert.ElementsMatch(t, entries, expectedEntries)
 
@@ -178,7 +178,7 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 	// 2b. Run against invalid host .
 	// 2c. Run against invalid URL - get 404, handle it.
 	func() {
-		d := newDCacheClient("faketoken", "", true)
+		d := newDCacheClient("faketoken", "", -1, 0, 0, true)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		expectedErrContains := "error sending HTTP request to get files"
@@ -186,7 +186,7 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 		source := "http://localhost:98765"
 		dirContents := []*FileEntry{}
 		parent := &FileEntry{}
-		entries, err := d.getFilesList(ctx, source, dirContents, parent)
+		entries, err := d.getFilesList(ctx, source, dirContents, parent, nil)
 		assert.ErrorContains(t, err, expectedErrContains)
 		assert.ElementsMatch(t, entries, expectedEntries)
 
@@ -196,7 +196,7 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 	func() {
 		var dirContents []*FileEntry
 		var parent *FileEntry
-		d := newDCacheClient("faketoken", "", true)
+		d := newDCacheClient("faketoken", "", -1, 0, 0, true)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		expectedErrContains := "request failed"
@@ -204,7 +204,7 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 		source := "http://localhost:8080/invalidendpoint"
 		dirContents = nil
 		parent = nil
-		entries, err := d.getFilesList(ctx, source, dirContents, parent)
+		entries, err := d.getFilesList(ctx, source, dirContents, parent, nil)
 		assert.ErrorContains(t, err, expectedErrContains)
 		assert.ElementsMatch(t, entries, expectedEntries)
 
@@ -214,14 +214,14 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 	func() {
 		var dirContents []*FileEntry
 		var parent *FileEntry
-		d := newDCacheClient("faketoken", "/api", true)
+		d := newDCacheClient("faketoken", "/api", -1, 0, 0, true)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		expectedEntries := createFileEntriesForJobsubStageDir()
 		source := "http://localhost:8080/api/testexperiment/resilient/jobsub_stage/"
 		dirContents = nil
 		parent = nil
-		entries, err := d.getFilesList(ctx, source, dirContents, parent)
+		entries, err := d.getFilesList(ctx, source, dirContents, parent, nil)
 		assert.NoError(t, err)
 		assert.ElementsMatch(t, entries, expectedEntries)
 
@@ -230,7 +230,7 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 	func() {
 		var dirContents []*FileEntry
 		var parent *FileEntry
-		d := newDCacheClient("faketoken", "/api", true)
+		d := newDCacheClient("faketoken", "/api", -1, 0, 0, true)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		expectedEntries := createFileEntriesForInvalidFileDir()
@@ -238,7 +238,7 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 		expectedErrContains := "unknown file type"
 		dirContents = nil
 		parent = nil
-		entries, err := d.getFilesList(ctx, source, dirContents, parent)
+		entries, err := d.getFilesList(ctx, source, dirContents, parent, nil)
 		assert.ElementsMatch(t, entries, expectedEntries)
 		assert.ErrorContains(t, err, expectedErrContains)
 	}()
@@ -247,7 +247,7 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 	func() {
 		var dirContents []*FileEntry
 		var parent *FileEntry
-		d := newDCacheClient("faketoken", "/api", true)
+		d := newDCacheClient("faketoken", "/api", -1, 0, 0, true)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		source := "http://localhost:8080/api/testexperiment/resilient/jobsub_stage/emptyPage"
@@ -255,9 +255,57 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 		expectedErrContains := "error reading dCache directory listing response"
 		dirContents = nil
 		parent = nil
-		entries, err := d.getFilesList(ctx, source, dirContents, parent)
+		entries, err := d.getFilesList(ctx, source, dirContents, parent, nil)
 		assert.ElementsMatch(t, entries, expectedEntries)
 		assert.ErrorContains(t, err, expectedErrContains)
+	}()
+
+	// 6 . Exclude every file
+	func() {
+		var dirContents []*FileEntry
+		var parent *FileEntry
+		d := newDCacheClient("faketoken", "/api", -1, 0, 0, true)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		expectedEntries := []*FileEntry{}
+		source := "http://localhost:8080/api/testexperiment/resilient/jobsub_stage/"
+		dirContents = nil
+		parent = nil
+		entries, err := d.getFilesList(ctx, source, dirContents, parent, func(*FileEntry) bool { return true })
+		assert.NoError(t, err)
+		assert.ElementsMatch(t, entries, expectedEntries)
+	}()
+
+	// TODO 7. Hit the file count limit
+	func() {
+		var dirContents []*FileEntry
+		var parent *FileEntry
+		d := newDCacheClient("faketoken", "/api", 1, 0, 0, true)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		expectedEntries := createFileEntriesForJobsubStageDir()[:1]
+		source := "http://localhost:8080/api/testexperiment/resilient/jobsub_stage/"
+		dirContents = nil
+		parent = nil
+		entries, err := d.getFilesList(ctx, source, dirContents, parent, nil)
+		assert.ErrorContains(t, err, errFileCountLimitExceeded.Error())
+		assert.ElementsMatch(t, entries, expectedEntries)
+	}()
+
+	// TODO 7. Hit the file count limit mid-directory
+	func() {
+		var dirContents []*FileEntry
+		var parent *FileEntry
+		d := newDCacheClient("faketoken", "/api", 3, 0, 0, true)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		expectedEntries := createFileEntriesForJobsubStageDirInterruptMidDir()
+		source := "http://localhost:8080/api/testexperiment/resilient/jobsub_stage/"
+		dirContents = nil
+		parent = nil
+		entries, err := d.getFilesList(ctx, source, dirContents, parent, nil)
+		assert.ErrorContains(t, err, errFileCountLimitExceeded.Error())
+		assert.ElementsMatch(t, entries, expectedEntries)
 	}()
 
 }
@@ -554,6 +602,7 @@ func createFileEntriesForJobsubStageDir() []*FileEntry {
 			containsFiles: nil,
 			parent:        nil,
 		},
+		dir1File1a,
 		dir1Entry,
 		{
 			filename:      "/pnfs/testexperiment/resilient/jobsub_stage/dir2",
@@ -562,8 +611,15 @@ func createFileEntriesForJobsubStageDir() []*FileEntry {
 			containsFiles: nil,
 			parent:        nil,
 		},
-		dir1File1a,
 	}
+}
+
+func createFileEntriesForJobsubStageDirInterruptMidDir() []*FileEntry {
+	sl := createFileEntriesForJobsubStageDir()[:3]
+	last := sl[len(sl)-1]
+	last.parent.containsFiles = nil // Simulate an interrupted directory listing
+	sl[len(sl)-1] = last            // Update the last entry
+	return sl
 }
 
 func createFileEntriesForInvalidFileDir() []*FileEntry {

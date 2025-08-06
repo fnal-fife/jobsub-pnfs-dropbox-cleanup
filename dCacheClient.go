@@ -233,7 +233,7 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 		// If the child is a directory, recursively call getFilesList
 		if entry.isDirectory {
 			// Query the dCache server for the directory contents
-			// This should be a call to PNFSTOHTTPS, right?
+			// TODO This should be a call to PNFSTOHTTPS, right?
 			fPath := strings.TrimPrefix(entry.filename, "/pnfs")
 			apiPath := d.pathToAPIURLPath(fPath)
 			newSource := sourceURL.Scheme + "://" + sourceURL.Host + apiPath
@@ -247,10 +247,26 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 					dirContents = append(dirContents, files...)   // Add the files we got back from the getFilesList call
 					return dirContents, errFileCountLimitExceeded // Return what we have
 				}
+
+				// If we excluded some files, we should still add any entries we got back from the recursive call
+				var errProcFiles *errProcessingFiles
+				excludedFiles := false
+				if errors.As(err, &errProcFiles) {
+					for _, e := range err.(*errProcessingFiles).errors {
+						if f, ok := e.(*errFileFlaggedToExclude); ok {
+							funcLogger.Warn("File flagged to be excluded by excludeFunc", "file", f.filename)
+							excludedFiles = true
+						}
+					}
+				}
+
 				// Otherwise, we just skip the whole directory and continue
-				funcLogger.Error("error getting files in directory. Moving to next entry", "directory", entry.filename, "error", err)
-				errs = append(errs, err)
-				continue
+				if !excludedFiles {
+					funcLogger.Error("error getting files in directory. Moving to next entry", "directory", entry.filename, "error", err)
+					errs = append(errs, err)
+					continue
+				}
+
 			}
 			// We got all the files in the directory back without hitting the file count limit or encountering an error, so finish populating the dir entry
 			entry.containsFiles = files
@@ -260,6 +276,7 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 		// If the entry is excluded by the excludeFunc, skip it
 		if excludeFunc != nil && excludeFunc(entry) {
 			funcLogger.Debug("Excluding file entry", "file", entry.filename)
+			errs = append(errs, &errFileFlaggedToExclude{filename: entry.filename})
 			continue
 		}
 
@@ -382,4 +399,12 @@ func mSecToUnixTuple(mSec int64) (int64, int64) {
 	seconds := (mSec - msecRemainder) / 1000
 	nanoseconds := msecRemainder * 1_000_000 // Convert milliseconds to nanoseconds
 	return seconds, nanoseconds
+}
+
+type errFileFlaggedToExclude struct {
+	filename string
+}
+
+func (e *errFileFlaggedToExclude) Error() string {
+	return fmt.Sprintf("file %s flagged to be excluded by excludeFunc", e.filename)
 }

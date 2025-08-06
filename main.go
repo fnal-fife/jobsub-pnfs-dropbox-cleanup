@@ -292,7 +292,14 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	apiEndpoint = "/" + strings.TrimLeft(apiEndpoint, "/")  // Ensure the API endpoint has only one leading slash
 	apiEndpoint = strings.TrimRight(apiEndpoint, "/") + "/" // Ensure the API endpoint has only one trailing slash
 
-	dClient := newDCacheClient(string(tok), apiEndpoint, true)
+	dClient := newDCacheClient(
+		string(tok),
+		apiEndpoint,
+		k.Int("dCache.totalFileCountLimit"),
+		uint(k.Int("dCache.retryCount")),
+		k.Duration("dCache.retrySleep"),
+		true,
+	)
 
 	exptNameOverride := k.StringMap("exptNameOverride")
 	exptArea := k.String("experiment") + "/resilient/jobsub_stage/"
@@ -304,7 +311,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	source := dCacheHostPort + apiEndpoint + exptArea
 
 	funcLogger.Info("Looking for files to delete in path", "dir", source, "experiment", k.String("experiment"))
-	filesList, err := dClient.getFilesList(ctx, source, nil, nil)
+	filesList, err := dClient.getFilesList(ctx, source, nil, nil, nil) // TODO This last arg should be a func that checks if the file is too old.  Then we can remove that check from the later portion
 	var partialSuccessErr *errProcessingFiles
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):

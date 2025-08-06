@@ -38,7 +38,7 @@ var (
 // 0. Check with delete method - DONE
 // 1. Get client working - DONE
 // 2. With recursion - DONE
-//4. with retries - done here, need to update run()
+//4. with retries - done here, need to update run() - DONE
 // 5. Refactor code if needed, like moving PNFSToTHTTPS here, and docstrings
 
 func init() {
@@ -118,8 +118,6 @@ func (d *dCacheClient) setTokenAuth() error {
 	return nil
 }
 
-// TODO pass in an excludeFunc that sees if the FileEntry is too old
-
 func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry, excludeFunc func(*FileEntry) bool) ([]*FileEntry, error) {
 	funcLogger := logger.With("caller", "dCacheClient.getFilesList")
 	// Check our context first
@@ -135,7 +133,8 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 	}
 
 	// Create the request
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
+	u := strings.TrimSuffix(source, "/") // Ensure the source URL does not end with a slash before we add query args
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		msg := "error creating HTTP request to get files list"
 		funcLogger.Error(msg, "source", source, "error", err)
@@ -162,22 +161,25 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 	for i := range int(d.retryCount + 1) {
 		funcLogger.Debug("Sending request to get files list", "url", req.URL.String(), "attempt", i+1)
 		resp, err = d.client.Do(req)
-		if err != nil {
-			msg := "error sending HTTP request to get files"
-			errFields := []any{any("urlPath"), any(req.URL.String())}
-			if resp != nil {
-				errFields = append(errFields, any("status"), any(resp.Status))
-			}
-			errFields = append(errFields, any("error"), any(err))
-			funcLogger.Error(msg, errFields...)
-			if i < int(d.retryCount) {
-				funcLogger.Debug("Will sleep 5s and then retry command", "try", i+1, "maxRetries", d.retryCount)
-				time.Sleep(d.retrySleep) // Sleep before retrying
-				continue
-			}
-			funcLogger.Error("Max retries exceeded for request", "url", req.URL.String(), "error", err)
-			return nil, fmt.Errorf("%s: %w", msg, err)
+		if err == nil {
+			break // Successful request: break out of the retry loop
 		}
+
+		// Failure - handle the error and retry if possible
+		msg := "error sending HTTP request to get files"
+		errFields := []any{any("urlPath"), any(req.URL.String())}
+		if resp != nil {
+			errFields = append(errFields, any("status"), any(resp.Status))
+		}
+		errFields = append(errFields, any("error"), any(err))
+		funcLogger.Error(msg, errFields...)
+		if i < int(d.retryCount) {
+			funcLogger.Debug("Will sleep 5s and then retry command", "try", i+1, "maxRetries", d.retryCount)
+			time.Sleep(d.retrySleep) // Sleep before retrying
+			continue
+		}
+		funcLogger.Error("Max retries exceeded for request", "url", req.URL.String(), "error", err)
+		return nil, fmt.Errorf("%s: %w", msg, err)
 	}
 	defer resp.Body.Close()
 

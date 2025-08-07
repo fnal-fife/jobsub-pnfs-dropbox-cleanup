@@ -462,6 +462,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	promDuration.WithLabelValues("filterFiles").Set(time.Since(startFilterFiles).Seconds())
 
 	// 4. Delete files and directories
+	stripPNFSFromPath := func(pnfsPath string) string { return strings.TrimPrefix(pnfsPath, "/pnfs") }
 	startDeleteFiles := time.Now()
 	deleteFilesErrs := &errDeletingFiles{files: make([]string, 0, len(fileMap))}
 	// 4a. Delete files in our delete list

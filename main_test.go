@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/knadh/koanf/v2"
@@ -430,45 +429,4 @@ func useFakeExecutable(t *testing.T, exeName, filename string) mockCleanup {
 	}
 	exeMap[exeName] = filename
 	return cleanupFunc
-}
-
-func TestStripPNFSFromPath(t *testing.T) {
-	type testCase struct {
-		description string
-		path        string
-		expected    string
-	}
-
-	testCases := []testCase{
-		{
-			description: "Path with PNFS prefix",
-			path:        "/pnfs/path/to/file",
-			expected:    "/path/to/file",
-		},
-		{
-			description: "Path without PNFS prefix",
-			path:        "/path/to/file",
-			expected:    "/path/to/file",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.description, func(t *testing.T) {
-			result := stripPNFSFromPath(tc.path)
-			assert.Equal(t, tc.expected, result)
-		})
-	}
-}
-
-func TestPNFSToHTTPS(t *testing.T) {
-	path := "/pnfs/path/to/file"
-	urlHostPort := "https://example.com:1234"
-	apiEndpoint := "//api"
-	transformFunc := func(filename string) string {
-		return strings.TrimPrefix(filename, "/pnfs")
-	}
-	expected := "https://example.com:1234/api/path/to/file"
-
-	result := PNFSToHTTPS(path, urlHostPort, apiEndpoint, transformFunc)
-	assert.Equal(t, expected, result)
 }

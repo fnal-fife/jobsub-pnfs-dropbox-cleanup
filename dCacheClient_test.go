@@ -703,3 +703,16 @@ func createFileEntriesForInvalidFileDir() []*FileEntry {
 		},
 	}
 }
+
+func TestPNFSToHTTPS(t *testing.T) {
+	path := "/pnfs/path/to/file"
+	urlHostPort := "https://example.com:1234"
+	apiEndpoint := "//api"
+	transformFunc := func(filename string) string {
+		return strings.TrimPrefix(filename, "/pnfs")
+	}
+	expected := "https://example.com:1234/api/path/to/file"
+
+	result := PNFSToHTTPS(path, urlHostPort, apiEndpoint, transformFunc)
+	assert.Equal(t, expected, result)
+}

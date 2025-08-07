@@ -232,10 +232,12 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 		// If the child is a directory, recursively call getFilesList
 		if entry.isDirectory {
 			// Query the dCache server for the directory contents
-			// TODO This should be a call to PNFSTOHTTPS, right?
-			fPath := strings.TrimPrefix(entry.filename, "/pnfs")
-			apiPath := d.pathToAPIURLPath(fPath)
-			newSource := sourceURL.Scheme + "://" + sourceURL.Host + apiPath
+			newSource := PNFSToHTTPS(
+				entry.filename,
+				sourceURL.Scheme+"://"+sourceURL.Host,
+				d.apiEndpoint,
+				func(s string) string { return strings.TrimPrefix(s, "/pnfs") },
+			)
 			files, err := d.getFilesList(ctx, newSource, nil, entry, excludeFunc)
 			if err != nil {
 				// If we hit the file count limit mid-directory, add the files that we got back from the getFilesList call, but do NOT add the directory, since the directory may not have been
@@ -400,8 +402,6 @@ func (d *dCacheClient) fileListingToFileEntry(listing dCacheFileListing, filenam
 	return f, nil
 }
 
-// TODO - should we move PNFSToHTTPS here?
-
 func (d *dCacheClient) trimAPIEndpoint(urlPath string) string {
 	// Remove the API endpoint prefix from the endpoint
 	return strings.TrimPrefix(urlPath, d.apiEndpoint)
@@ -410,6 +410,18 @@ func (d *dCacheClient) trimAPIEndpoint(urlPath string) string {
 func (d *dCacheClient) pathToAPIURLPath(path string) string {
 	// Add the API endpoint prefix to the endpoint
 	return filepath.Join(d.apiEndpoint, path)
+}
+
+// PNFSToHTTPS converts a given PNFS file path to an HTTPS URL using the specified host and port.
+// The function applies a filename transformation function to the PNFS path before joining it to the base URL.
+// If the provided urlHostPort is invalid, it logs an error and returns an empty string.
+func PNFSToHTTPS(pnfsPath, urlHostPort, apiEndpoint string, filenameTransformFunc func(string) string) string {
+	u, err := url.Parse(urlHostPort)
+	if err != nil {
+		slog.Error("error parsing URL", "error", err)
+		return ""
+	}
+	return u.JoinPath(apiEndpoint, filenameTransformFunc(pnfsPath)).String()
 }
 
 // mSecToUnixTuple converts milliseconds to a tuple of seconds and nanoseconds for use in time.Unix()

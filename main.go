@@ -415,14 +415,12 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 	promDuration.WithLabelValues("getCondorFiles").Set(time.Since(startGetCondorFiles).Seconds())
 
-	// 3. Remove any files from our delete list that are in the list of job files or are recent
-	// We are iterating a second time to check if the files are recent, which may not be totally efficient, but it should improve readability
-	// Maybe if we have performance problems, we first get the list of job files, then pass in a filter function to our tree-builder that could check
-	// for recency or job file membership
+	// 3. Remove any files from our delete list that are being used by condor jobs
 	startFilterFiles := time.Now()
 
-	funcLogger.Debug("Are the files not recent or being used by condor jobs?")
+	funcLogger.Debug("Are the files being used by condor jobs?")
 	for _, entry := range fileMap {
+		// TODO make this a separate Utility func that we can test!
 		func(e *FileEntry) {
 			removeFileAndAncestorsFromDeleteList := func() {
 				delete(fileMap, e.Name())
@@ -433,8 +431,8 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 					_parent = _parent.parent
 				}
 			}
-			if _, ok := jobFiles[e.Name()]; ok || fileIsRecent(e, fileAgeCutoff) {
-				funcLogger.Debug("File is in job files or recent, so we will not delete it:", "filename", e.Name())
+			if _, ok := jobFiles[e.Name()]; ok {
+				funcLogger.Debug("File is in job files, so we will not delete it:", "filename", e.Name())
 				removeFileAndAncestorsFromDeleteList()
 			}
 		}(entry)

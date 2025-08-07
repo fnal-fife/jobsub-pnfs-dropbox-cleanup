@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -119,6 +118,23 @@ func (d *dCacheClient) setTokenAuth() error {
 	return nil
 }
 
+// getFilesList retrieves a list of files and directories from the specified dCache source URL.
+// It performs an HTTP GET request to the dCache REST API, recursively traversing directories
+// and populating the dirContents slice with FileEntry objects. The function respects a file count
+// limit and supports retrying requests on failure. It also allows exclusion of entries via the
+// excludeFunc callback. If the file count limit is exceeded or errors occur during traversal,
+// appropriate errors are returned.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control.
+//   - source: The dCache source URL to list files from.
+//   - dirContents: Slice to accumulate discovered FileEntry objects.
+//   - parent: The parent FileEntry for the current directory level.
+//   - excludeFunc: Optional function to exclude specific FileEntry objects.
+//
+// Returns:
+//   - []*FileEntry: Slice of discovered FileEntry objects.
+//   - error: Error if the operation fails, including context errors, HTTP errors, or traversal errors.
 func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry, excludeFunc func(*FileEntry) bool) ([]*FileEntry, error) {
 	funcLogger := logger.With("caller", "dCacheClient.getFilesList")
 	// Check our context first
@@ -373,17 +389,31 @@ func (d *dCacheClient) setGetHeaders(req *http.Request) error {
 	return nil
 }
 
+// dCacheFileListing contains the pertinent file listing information returned by a HTTP GET request to the dCache REST API
 type dCacheFileListing struct {
 	FileName string `json:"fileName"`
 	FileType string `json:"fileType"`
 	Mtime    int64  `json:"mtime"`
 }
+
+// dCacheDirListing contains the pertinent directory listing information returned by a HTTP GET request to the dCache REST API
 type dCacheDirListing struct {
 	Children []dCacheFileListing `json:"children"`
 	FileType string              `json:"fileType"`
 	Mtime    int64               `json:"mtime"`
 }
 
+// fileListingToFileEntry converts a dCacheFileListing into a FileEntry, applying a filename transformation function.
+// It sets the filename, modification time, and directory status based on the listing data.
+// Returns an error if the file type is unknown.
+//
+// Parameters:
+//   - listing: The dCacheFileListing to convert.
+//   - filenameTransformFunc: A function to transform the filename.
+//
+// Returns:
+//   - *FileEntry: The resulting FileEntry.
+//   - error: An error if the file type is unknown.
 func (d *dCacheClient) fileListingToFileEntry(listing dCacheFileListing, filenameTransformFunc func(string) string) (*FileEntry, error) {
 	f := &FileEntry{filename: filenameTransformFunc(listing.FileName)}
 
@@ -402,14 +432,9 @@ func (d *dCacheClient) fileListingToFileEntry(listing dCacheFileListing, filenam
 	return f, nil
 }
 
+// trimAPIEndpoint remove the dCacheClient API endpoint prefix from the urlPath
 func (d *dCacheClient) trimAPIEndpoint(urlPath string) string {
-	// Remove the API endpoint prefix from the endpoint
 	return strings.TrimPrefix(urlPath, d.apiEndpoint)
-}
-
-func (d *dCacheClient) pathToAPIURLPath(path string) string {
-	// Add the API endpoint prefix to the endpoint
-	return filepath.Join(d.apiEndpoint, path)
 }
 
 // PNFSToHTTPS converts a given PNFS file path to an HTTPS URL using the specified host and port.
@@ -432,6 +457,8 @@ func mSecToUnixTuple(mSec int64) (int64, int64) {
 	return seconds, nanoseconds
 }
 
+// errFileFlaggedToExclude is an error type used to indicate that a file was flagged to be excluded by the excludeFunc.
+// It contains the filename that was flagged.
 type errFileFlaggedToExclude struct {
 	filename string
 }

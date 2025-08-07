@@ -40,6 +40,7 @@ var (
 // 2. With recursion - DONE
 //4. with retries - done here, need to update run() - DONE
 // 5. Refactor code if needed, like moving PNFSToTHTTPS here, and docstrings
+// 6. Update tests to make sure we're checking all cases - esp the case where excluded some files
 
 func init() {
 	// Register the metrics
@@ -149,12 +150,10 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 	urlValues.Add("limit", strconv.Itoa(int(d.fileCountLeft.Load())))
 	req.URL.RawQuery = urlValues.Encode()
 
-	// Set the Authorization and Accept headers
-	// TODO Setting these headers should be a method on dCacheClient
-	if err = d.authFunc(req); err != nil {
-		return nil, fmt.Errorf("error setting authorization header for files list request: %w", err)
+	// Set the request headers
+	if err = d.setGetHeaders(req); err != nil {
+		return nil, fmt.Errorf("error setting headers for files list request: %w", err)
 	}
-	req.Header.Set("Accept", "application/json") // Set the Accept header to application/json
 
 	// Perform the request in a retry loop
 	var resp *http.Response
@@ -357,6 +356,20 @@ var (
 	errNoTokenProvided = fmt.Errorf("no token provided to dCache client")
 	errNilRequest      = fmt.Errorf("nil request provided to dCache client")
 )
+
+// setGetHeaders sets the necessary headers for an HTTP GET request, including authorization and
+// the "Accept: application/json" header. It returns an error if the request is nil or if
+// setting the authorization header fails.
+func (d *dCacheClient) setGetHeaders(req *http.Request) error {
+	if req == nil {
+		return errNilRequest
+	}
+	if err := d.authFunc(req); err != nil {
+		return fmt.Errorf("error setting authorization header for GET request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json") // Set the Accept header to application/json
+	return nil
+}
 
 type dCacheFileListing struct {
 	FileName string `json:"fileName"`

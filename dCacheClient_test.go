@@ -137,7 +137,7 @@ func TestDCacheClientSetTokenAuth(t *testing.T) {
 
 }
 
-// func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry) ([]*FileEntry, error) {
+// TODO Make these tests table-driven
 func TestDCacheClientGetFilesList(t *testing.T) {
 	// Notes:
 	// don't need environment, since we have headers
@@ -552,21 +552,91 @@ func TestDCacheClientPathToAPIURLPath(t *testing.T) {
 	}
 }
 
-// 2.  Test server has following structure:
-// Request needs to have header for JSON
-// These should all be handlers that return 200 OK with JSON data:
-//    /testexperiment/resilient/jobsub_stage/
-//    /testexperiment/resilient/jobsub_stage/file1
-//    /testexperiment/resilient/jobsub_stage/file1b
-//   /testexperiment/resilient/jobsub_stage/dir1
-//   /testexperiment/resilient/jobsub_stage/dir1/file1a
-//   /testexperiment/resilient/jobsub_stage/dir2 (empty)
+func TestSetGetHeaders(t *testing.T) {
+	fakeToken := "testtoken"
+	fakeReq, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
 
-// For test 4, we should have a separate path that gives one bad dir:
-//   /testexperiment/resilient/jobsub_stage_bad/
-//   /testexperiment/resilient/jobsub_stage_bad/bad_dir --- and this handler should return a 500 error
+	type testCase struct {
+		description         string
+		token               string
+		authFunc            func(req *http.Request) error
+		req                 *http.Request
+		expectedErr         error
+		expectedHeadersHave map[string]string
+	}
 
-// getting files list should give us all of these files, with correct metadata
+	testCases := []testCase{
+		{
+			description:         "Nil request",
+			token:               fakeToken,
+			authFunc:            nil,
+			req:                 nil,
+			expectedErr:         errNilRequest,
+			expectedHeadersHave: nil,
+		},
+		{
+			description: "Valid request with token, no authFunc",
+			token:       fakeToken,
+			authFunc:    func(req *http.Request) error { return nil },
+			req:         fakeReq,
+			expectedErr: nil,
+			expectedHeadersHave: map[string]string{
+				"Accept": "application/json",
+			},
+		},
+		{
+			description: "Valid request with token, authFunc errors",
+			token:       "",
+			authFunc: func(req *http.Request) error {
+				return errNoTokenProvided
+			},
+			req:                 fakeReq,
+			expectedErr:         errNoTokenProvided,
+			expectedHeadersHave: nil,
+		},
+		{
+			description: "Valid request with token, proper authFunc",
+			token:       fakeToken,
+			authFunc: func(req *http.Request) error {
+				req.Header.Set("Authorization", "Bearer "+fakeToken)
+				return nil
+			},
+			req:         fakeReq,
+			expectedErr: nil,
+			expectedHeadersHave: map[string]string{
+				"Accept":        "application/json",
+				"Authorization": "Bearer " + fakeToken,
+			},
+		},
+	}
+
+	// var req *http.Request
+	// // 1. noop auth-function
+	// token := "testtoken"
+	// authFunc := func(req *http.Request) error { return nil }
+	// expectedHeadersHave := map[string]string{
+	// 	"Accept": "application/json",
+	// }
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			t.Parallel()
+			d := &dCacheClient{
+				client:   http.DefaultClient,
+				authFunc: tc.authFunc,
+				token:    tc.token,
+			}
+			err := d.setGetHeaders(tc.req)
+			assert.ErrorIs(t, err, tc.expectedErr)
+			for k, v := range tc.expectedHeadersHave {
+				assert.Contains(t, tc.req.Header, k)
+				assert.Equal(t, v, tc.req.Header.Get(k))
+			}
+		})
+	}
+}
+
+// Utility functions
 
 func createFileEntriesForJobsubStageDir() []*FileEntry {
 	// Need to make some pointers for linking purposes

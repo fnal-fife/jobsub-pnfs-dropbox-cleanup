@@ -311,13 +311,28 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	source := dCacheHostPort + apiEndpoint + exptArea
 
 	funcLogger.Info("Looking for files to delete in path", "dir", source, "experiment", k.String("experiment"))
-	filesList, err := dClient.getFilesList(ctx, source, nil, nil, nil) // TODO This last arg should be a func that checks if the file is too old.  Then we can remove that check from the later portion
+	fileIsTooNew := func(f *FileEntry) bool {
+		return fileIsRecent(f, fileAgeCutoff)
+	}
+	filesList, err := dClient.getFilesList(ctx, source, nil, nil, fileIsTooNew)
 	var partialSuccessErr *errProcessingFiles
 	switch {
 	case errors.Is(err, errFileCountLimitExceeded):
 		funcLogger.Warn("file count limit exceeded. Stopping collecting files now")
 	case errors.As(err, &partialSuccessErr):
-		funcLogger.Warn("partial success occurred while collecting files", "errors", err)
+		errsLeft := make([]error, 0, len(partialSuccessErr.errors))
+		// Files flagged for exclusion
+		for _, e := range partialSuccessErr.errors {
+			var er *errFileFlaggedToExclude
+			if errors.As(e, &er) {
+				funcLogger.Warn("file excluded by excludeFunc", "file", er.filename)
+				continue
+			}
+			errsLeft = append(errsLeft, e) // Keep the other errors to warn about later
+		}
+		if len(errsLeft) > 0 {
+			funcLogger.Warn("partial success occurred while collecting files", "errors", errsLeft)
+		}
 	case err != nil:
 		return fmt.Errorf("error getting dropbox files list: %w", err)
 	}

@@ -19,6 +19,7 @@ import (
 )
 
 // Metrics
+// TODO Add relevant metrics
 var (
 	dCacheClientRemoveFileHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "jobsub_pnfs_dropbox_cleanup",
@@ -38,7 +39,7 @@ var (
 // 1. Get client working - DONE
 // 2. With recursion - DONE
 //4. with retries - done here, need to update run() - DONE
-// 5. Refactor code if needed, like moving PNFSToTHTTPS here, and docstrings
+// 5. Refactor code if needed, like moving PNFSToTHTTPS here, and docstrings - DONE
 // 6. Update tests to make sure we're checking all cases - esp the case where excluded some files
 
 func init() {

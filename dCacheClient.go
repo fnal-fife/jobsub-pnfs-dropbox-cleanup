@@ -252,11 +252,16 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 				var errProcFiles *errProcessingFiles
 				excludedFiles := false
 				if errors.As(err, &errProcFiles) {
-					for _, e := range err.(*errProcessingFiles).errors {
-						if f, ok := e.(*errFileFlaggedToExclude); ok {
-							funcLogger.Warn("File flagged to be excluded by excludeFunc", "file", f.filename)
+					// See if we're excluding any files because they were flagged by the excludeFunc. If so, some files
+					// might still need to get added to the dirContents, so we should not return an error or skip the
+					// directory
+					for _, e := range errProcFiles.errors {
+						var er *errFileFlaggedToExclude
+						if errors.As(e, &er) {
 							excludedFiles = true
 						}
+						// Otherwise, add these errors to the errs slice
+						errs = append(errs, er)
 					}
 				}
 
@@ -268,6 +273,7 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 				}
 
 			}
+
 			// We got all the files in the directory back without hitting the file count limit or encountering an error, so finish populating the dir entry
 			entry.containsFiles = files
 			dirContents = append(dirContents, files...) // Add the entries in this directory to the dirContents list before adding the directory itself

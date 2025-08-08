@@ -18,17 +18,14 @@ import (
 	"time"
 )
 
-// TODO NOTE: This will be deprecated when the dCache client is fully implemented.  Because of this, I won't bother now with mocking out gfal-ls command failure
+// NOTE: The vars, types, and methods in this file are now deprecated and will not be maintained unless necessary. Callers wishing to interact
+// with dCache should use the dCacheClient type and its methods.
 
 var lineRegex = regexp.MustCompile(`((?:\w|-)+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\w+\s+\d+\s+(?:(?:\d+:\d+)|\d+))\s+(.+)`)
 
-// var (
-// 	defaultRetrySleep    time.Duration = 5 * time.Second // Default sleep time between retries
-// 	defaultFileCountLeft int32         = 1000            // Default file count limit
-// 	// In our directory structure, we expect that each directory will most likely have at least
-// 	// 2 files (the directory itself and at least one file inside it).
-// 	defaultLenDirPlusFile int = 2
-// )
+// In our directory structure, we expect that each directory will most likely have at least
+// 2 files (the directory itself and at least one file inside it).
+var defaultLenDirPlusFile int = 2
 
 var (
 	dateWithTimeNoYearLayout string = "Jan  2 15:04"
@@ -36,6 +33,9 @@ var (
 )
 
 func init() {
+	// As this is now deprecated, we won't find the executables required for gfal2Client
+	return
+
 	// Check for all required executables
 	requiredExecutables := []string{
 		"gfal-ls",
@@ -54,7 +54,7 @@ func init() {
 	}
 }
 
-// TODO This should probably have an authenticator (token or proxy?)
+// Deprecated
 type gfal2Client struct {
 	addedEnvironment []string
 	fileCountLimit   uint
@@ -65,6 +65,8 @@ type gfal2Client struct {
 
 // newGfal2Client creates a new gfal2Client with the specified file count limit, retry count, retry sleep duration, and additional environment variables.
 // Passsing the zero-values of the parameters to this constructor will yield a usable default *gfal2Client.
+//
+// Deprecated
 func newGfal2Client(fileCountLimit int, retryCount uint, retrySleep time.Duration, environment []string) *gfal2Client {
 	c := &gfal2Client{
 		addedEnvironment: environment,
@@ -93,6 +95,8 @@ func newGfal2Client(fileCountLimit int, retryCount uint, retrySleep time.Duratio
 // slice of FileEntry objects can be used if the caller wishes
 //
 // TODO: Can this be implemented using a fs.WalkDirFunc?
+//
+// Deprecated
 func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirContents []*FileEntry, parent *FileEntry) ([]*FileEntry, error) {
 	funcLogger := logger.With("caller", "gfal2Client.getFilesList")
 	if err := ctx.Err(); err != nil {
@@ -226,6 +230,8 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 // or for directories:
 // drwxrwxrwx   0 0     0             0 Apr  6  2023 bogus_dir
 // It returns an error if the line cannot be parsed correctly.
+//
+// Deprecated
 func (g *gfal2Client) fileListingToFileEntry(line string, filenameTransformFunc func(string) string) (*FileEntry, error) {
 	var err error
 	lineParts := lineRegex.FindStringSubmatch(line)
@@ -251,6 +257,8 @@ func (g *gfal2Client) fileListingToFileEntry(line string, filenameTransformFunc 
 }
 
 // parsePermsToDirectoryFlag checks the permissions string and returns true if it indicates a directory
+//
+// Deprecated
 func (g *gfal2Client) parsePermsToDirectoryFlag(perms string) (bool, error) {
 	if len(perms) != 10 {
 		return false, errMalformedPerms
@@ -269,6 +277,8 @@ func (g *gfal2Client) parsePermsToDirectoryFlag(perms string) (bool, error) {
 
 // parseDateStampToTime parses a date string as returned by gfal-ls (in the format "Jan  2 15:04" or "Jan 2 2006")
 // and returns a time.Time object.
+//
+// Deprecated
 func (g *gfal2Client) parseDateStampToTime(dateString string) (time.Time, error) {
 	var rawDateStamp time.Time
 	var err error
@@ -292,6 +302,8 @@ func (g *gfal2Client) parseDateStampToTime(dateString string) (time.Time, error)
 }
 
 // This is unused for now, but we keep it here in case we want to use it later
+//
+// Deprecated
 func (g *gfal2Client) removeFile(ctx context.Context, source string, isDir bool) error {
 	// Setup environment
 	environ := os.Environ()
@@ -320,22 +332,8 @@ func (g *gfal2Client) removeFile(ctx context.Context, source string, isDir bool)
 	return nil
 }
 
+// Deprecated
 var (
-	errParseLine              = errors.New("could not parse line")
-	errMalformedPerms         = errors.New("perms string is malformed")
-	errFileCountLimitExceeded = errors.New("file parse limit exceeded")
+	errParseLine      = errors.New("could not parse line")
+	errMalformedPerms = errors.New("perms string is malformed")
 )
-
-// errProcessingFiles is an error type that holds a slice of errors encountered while processing files.
-type errProcessingFiles struct {
-	errors []error
-}
-
-func (e *errProcessingFiles) Error() string {
-	var b strings.Builder
-	for _, err := range e.errors {
-		b.WriteString(err.Error())
-		b.WriteString(", ")
-	}
-	return strings.TrimRight(b.String(), ", ")
-}

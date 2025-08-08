@@ -385,7 +385,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 	// Now query our schedds for the files in use by condor jobs
 	for _, sch := range schedds {
-		scheddFiles, err := getScheddFiles(ctx, sch, authMethod, k.String("experiment"))
+		scheddFiles, err := getScheddFiles(ctx, sch, authMethod, k.String("experiment"), k.String("condor.jobConstraint"))
 		if err != nil {
 			funcLogger.Error("error getting condor job files from schedd", "error", err, "schedd", sch.name)
 			continue

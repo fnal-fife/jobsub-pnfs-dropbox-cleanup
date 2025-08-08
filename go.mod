@@ -1,6 +1,6 @@
 module github.com/shreyb/jobsub-pnfs-dropbox-cleanup
 
-go 1.23.0
+go 1.24.3
 
 require (
 	github.com/grafana/loki-client-go v0.0.0-20240913122146-e119d400c3a5

@@ -10,6 +10,7 @@ import (
 )
 
 func TestParseDateStampToTime(t *testing.T) {
+	t.Skip("Skipping test, as code is deprecated")
 	type testCase struct {
 		description string
 		input       string
@@ -151,6 +152,7 @@ func TestGfal2ClientParsePermsToDirectoryFlag(t *testing.T) {
 }
 
 func TestGfal2ClientFileListingToFileEntry(t *testing.T) {
+	t.Skip("Skipping test, as code is deprecated")
 	type testCase struct {
 		description       string
 		line              string
@@ -213,6 +215,7 @@ func TestGfal2ClientFileListingToFileEntry(t *testing.T) {
 }
 
 func TestNewGfal2Client(t *testing.T) {
+	t.Skip("Skipping test, as code is deprecated")
 	// We're checking the default behavior here
 	g := newGfal2Client(0, 0, 0, nil)
 

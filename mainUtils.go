@@ -108,6 +108,24 @@ func userConfigDir() string {
 	return dir
 }
 
+func removeFileAndAncestorsFromDeleteList(e *FileEntry, fileMap map[string]*FileEntry) {
+	// We're doing this extra check beforehand because we don't want to rely on the delete() function.
+	// If the file entry is not in the map, and we didn't have this extra check, then a parent might get
+	// improperly deleted from the fileMap
+	if _, ok := fileMap[e.Name()]; !ok {
+		slog.Debug("File entry not in map of files to delete, nothing to remove", "fileEntry", e.Name())
+		return
+	}
+
+	delete(fileMap, e.Name())
+	_parent := e.parent
+	for _parent != nil {
+		slog.Debug("Removing parent from deletion list", "fileEntry.parent", _parent.Name())
+		delete(fileMap, _parent.Name())
+		_parent = _parent.parent
+	}
+}
+
 var (
 	errNoConfigFileFound = errors.New("no config file found in any of the specified directories")
 	errNoVaultTokenFile  = fmt.Errorf("could not find vault token file at configured location: %w", fs.ErrNotExist)

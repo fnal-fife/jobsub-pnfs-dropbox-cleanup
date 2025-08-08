@@ -15,10 +15,6 @@ dCache:
   retrySleep: "2s"
 # totalFileCountLimit: 50
 
-gfal2:
-  retryCount: 5
-  retrySleep: "2s"
-
 condor:
   pool: "gpcollector04.fnal.gov"
   jobConstraint: "!IsUndefined(PNFS_INPUT_FILES)"

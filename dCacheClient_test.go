@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"net/http"
 	"strings"
 	"testing"
@@ -10,6 +9,40 @@ import (
 
 	"github.com/stretchr/testify/assert"
 )
+
+// This really tests if we get a nil client back or not, depending on if the token is valid or not.
+func TestNewDCacheClient(t *testing.T) {
+	type testCase struct {
+		description       string
+		token             string
+		expectedClientNil bool
+	}
+
+	testCases := []testCase{
+		{
+			description:       "Valid token with leading/trailing spaces",
+			token:             "  testtoken  ",
+			expectedClientNil: false,
+		},
+		{
+			description:       "Blank token",
+			token:             "",
+			expectedClientNil: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			t.Parallel()
+			d := newDCacheClient(tc.token, "/", 0, 0, 0, true)
+			if tc.expectedClientNil {
+				assert.Nil(t, d)
+				return
+			}
+			assert.NotNil(t, d)
+		})
+	}
+}
 
 func TestDcacheClientRemoveFile(t *testing.T) {
 	defaultContext := context.Background()
@@ -61,80 +94,6 @@ func TestDcacheClientRemoveFile(t *testing.T) {
 			assert.ErrorContains(t, err, tc.expectedErrContains)
 		})
 	}
-}
-
-// Rewrite these tests:
-// 2. Test function on request.  Nil request = errNilRequest; good request = bearer
-func TestDCacheClientSetTokenAuth(t *testing.T) {
-	type testCase struct {
-		description                 string
-		token                       string
-		isRequestNil                bool
-		expectedErr                 error
-		expectedErrFromReturnedFunc error
-		expectedHeader              string
-	}
-
-	testCases := []testCase{
-		{
-			description: "No token provided",
-			token:       "",
-			expectedErr: errNoTokenProvided,
-		},
-		{
-			description:                 "Token provided, nil request",
-			token:                       "12345",
-			isRequestNil:                true,
-			expectedErr:                 nil,
-			expectedErrFromReturnedFunc: errNilRequest,
-		},
-		{
-			description:                 "Token provided",
-			token:                       "12345",
-			isRequestNil:                false,
-			expectedErr:                 nil,
-			expectedErrFromReturnedFunc: nil,
-			expectedHeader:              "Bearer 12345",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.description, func(t *testing.T) {
-			t.Parallel()
-			client := &dCacheClient{
-				client: &http.Client{
-					Transport: &http.Transport{
-						TLSClientConfig: &tls.Config{
-							InsecureSkipVerify: true,
-						},
-					},
-				},
-				token: strings.TrimSpace(tc.token),
-			}
-
-			// If we get an error from setTokenAuth, client.authFunc should also be nil
-			err := client.setTokenAuth()
-			if tc.expectedErr != nil {
-				assert.ErrorIs(t, err, tc.expectedErr)
-				assert.Nil(t, client.authFunc)
-				return
-			}
-
-			// Check client.authFunc for the right behavior
-			var req *http.Request
-			if !tc.isRequestNil {
-				req, _ = http.NewRequest(http.MethodGet, "http://example.com", nil)
-			}
-			err = client.authFunc(req)
-			if tc.expectedErrFromReturnedFunc != nil {
-				assert.ErrorIs(t, err, tc.expectedErrFromReturnedFunc)
-				return
-			}
-			assert.NoError(t, err)
-			assert.Equal(t, tc.expectedHeader, req.Header.Get("Authorization"))
-		})
-	}
-
 }
 
 func TestDCacheClientGetFilesList(t *testing.T) {
@@ -459,6 +418,58 @@ func TestDCacheClientTrimAPIEndpoint(t *testing.T) {
 	}
 }
 
+func TestDCacheClientSetTokenAuth(t *testing.T) {
+	type testCase struct {
+		description         string
+		token               string
+		expectedErr         error
+		expectedHeadersHave map[string]string
+	}
+
+	testCases := []testCase{
+		{
+			description:         "No token provided",
+			token:               "",
+			expectedErr:         errNoTokenProvided,
+			expectedHeadersHave: nil,
+		},
+		{
+			description: "Valid token provided",
+			token:       "testtoken",
+			expectedErr: nil,
+			expectedHeadersHave: map[string]string{
+				"Authorization": "Bearer testtoken",
+			},
+		},
+		{
+			description: "Valid token provided with extra leading/trailing space",
+			token:       "  testtoken ",
+			expectedErr: nil,
+			expectedHeadersHave: map[string]string{
+				"Authorization": "Bearer testtoken",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			t.Parallel()
+			d := &dCacheClient{}
+			err := d.setTokenAuth(strings.TrimSpace(tc.token))
+			assert.ErrorIs(t, err, tc.expectedErr)
+			if tc.expectedErr == nil {
+				req, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
+				err := d.authFunc(req)
+				assert.NoError(t, err, tc.expectedErr)
+				for k, v := range tc.expectedHeadersHave {
+					assert.Contains(t, req.Header, k)
+					assert.Equal(t, v, req.Header.Get(k))
+				}
+			}
+		})
+	}
+}
+
 func TestSetGetHeaders(t *testing.T) {
 	fakeToken := "testtoken"
 	fakeReq, _ := http.NewRequest(http.MethodGet, "http://example.com", nil)
@@ -546,6 +557,119 @@ func TestPNFSToHTTPS(t *testing.T) {
 
 	result := PNFSToHTTPS(path, urlHostPort, apiEndpoint, transformFunc)
 	assert.Equal(t, expected, result)
+}
+
+func TestFixAPIEndpoint(t *testing.T) {
+	type testCase struct {
+		description string
+		apiEndpoint string
+		expected    string
+	}
+	testCases := []testCase{
+		{
+			description: "API endpoint no leading slash",
+			apiEndpoint: "api/v1/namespace/",
+			expected:    "/api/v1/namespace/",
+		},
+		{
+			description: "API endpoint no trailing slash",
+			apiEndpoint: "/api/v1/namespace2",
+			expected:    "/api/v1/namespace2/",
+		},
+		{
+			description: "API endpoint with leading and trailing slashes",
+			apiEndpoint: "/api/v1/namespace3/",
+			expected:    "/api/v1/namespace3/",
+		},
+		{
+			description: "API endpoint with multiple leading slashes",
+			apiEndpoint: "///api/v1/namespace4/",
+			expected:    "/api/v1/namespace4/",
+		},
+		{
+			description: "Empty API endpoint",
+			apiEndpoint: "",
+			expected:    "/",
+		},
+		{
+			description: "API endpoint with only slashes",
+			apiEndpoint: "/////",
+			expected:    "/",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			t.Parallel()
+			result := fixAPIEndpoint(tc.apiEndpoint)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestDCacheClientSetFileCountLimit(t *testing.T) {
+	d := &dCacheClient{}
+	type testCase struct {
+		description            string
+		limit                  int
+		expectedFileCountLimit uint
+		expectedFileCountLeft  int32
+	}
+	// 	9. fileCountLimit set to negative value
+	// 10. fileCountLimit set to a positive value
+	testCases := []testCase{
+		{
+			description:            "Set fileCountLimit to negative value",
+			limit:                  -1,
+			expectedFileCountLimit: uint(defaultFileCountLeft),
+			expectedFileCountLeft:  int32(defaultFileCountLeft),
+		},
+		{
+			description:            "Set fileCountLimit to a positive value",
+			limit:                  10,
+			expectedFileCountLimit: 10,
+			expectedFileCountLeft:  10,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			t.Parallel()
+			d.setFileCountLimit(tc.limit)
+			assert.Equal(t, tc.expectedFileCountLimit, d.fileCountLimit)
+			assert.Equal(t, tc.expectedFileCountLeft, d.fileCountLeft.Load())
+		})
+	}
+}
+
+func TestDCacheClientSetRetrySleep(t *testing.T) {
+	type testCase struct {
+		description string
+		retrySleep  time.Duration
+		expected    time.Duration
+	}
+
+	testCases := []testCase{
+		{
+			description: "Set retrySleep to 0",
+			retrySleep:  0,
+			expected:    defaultRetrySleep,
+		},
+		{
+			description: "Set retrySleep to a positive value",
+			retrySleep:  5 * time.Second,
+			expected:    5 * time.Second,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			t.Parallel()
+			d := &dCacheClient{}
+			d.setRetrySleep(tc.retrySleep)
+			assert.Equal(t, tc.expected, d.retrySleep)
+		})
+	}
 }
 
 // Utility functions

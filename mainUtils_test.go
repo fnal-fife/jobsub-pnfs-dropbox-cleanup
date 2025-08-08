@@ -182,6 +182,7 @@ func TestGetScheddFiles(t *testing.T) {
 	testSchedd := &condorSchedd{
 		name: "test-schedd",
 	}
+	constraint := ""
 
 	type testCase struct {
 		description         string
@@ -232,7 +233,7 @@ func TestGetScheddFiles(t *testing.T) {
 			}
 
 			// Run the test
-			files, err := getScheddFiles(context.Background(), testSchedd, IDTOKENS, experiment)
+			files, err := getScheddFiles(context.Background(), testSchedd, IDTOKENS, experiment, constraint)
 			if err != nil {
 				assert.Contains(t, err.Error(), tc.expectedErrContains)
 			}

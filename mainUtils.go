@@ -69,7 +69,7 @@ func checkVaultTokenFile(location, ageCutoff string) error {
 
 // getScheddFiles retrieves the list of PNFS dropbox files associated with batch jobs for a given experiment
 // from a specified Condor schedd.  Returns a slice of file paths in PNFS or an error if any step fails.
-func getScheddFiles(ctx context.Context, sch *condorSchedd, authMethod condorAuthMethod, experiment string) ([]string, error) {
+func getScheddFiles(ctx context.Context, sch *condorSchedd, authMethod condorAuthMethod, experiment string, constraint string) ([]string, error) {
 	funcLogger := logger.With("caller", "getScheddFiles")
 	scheddFiles := make([]string, 0)
 	sch.cmdEnv = os.Environ()
@@ -81,7 +81,7 @@ func getScheddFiles(ctx context.Context, sch *condorSchedd, authMethod condorAut
 	}
 
 	funcLogger.Debug("Getting PNFS jobs for experiment", "experiment", experiment, "schedd", sch.name)
-	ads, err := sch.getPNFSJobsForExperiment(ctx, k.String("experiment"), k.String("condor.jobConstraint"))
+	ads, err := sch.getPNFSJobsForExperiment(ctx, experiment, constraint)
 	if err != nil {
 		return nil, fmt.Errorf("error getting PNFS jobs for experiment %s: %w", experiment, err)
 	}

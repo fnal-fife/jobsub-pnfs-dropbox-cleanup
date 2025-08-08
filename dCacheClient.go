@@ -60,7 +60,6 @@ type dCacheClient struct {
 	retrySleep     time.Duration
 }
 
-// TODO Test all the cases of fileCountLimit, retryCount, retrySleep
 // newDCacheClient creates a new dCacheClient instance. It sets up the HTTP client with TLS configuration
 func newDCacheClient(token, apiEndpoint string, fileCountLimit int, retryCount uint, retrySleep time.Duration, skipTlsVerify bool) *dCacheClient {
 	d := &dCacheClient{
@@ -71,52 +70,19 @@ func newDCacheClient(token, apiEndpoint string, fileCountLimit int, retryCount u
 				},
 			},
 		},
-		token:      strings.TrimSpace(token),
 		retryCount: retryCount,
-		retrySleep: defaultRetrySleep,
 	}
 
-	if !strings.HasPrefix(apiEndpoint, "/") {
-		apiEndpoint = "/" + apiEndpoint // Ensure the API endpoint starts with a slash
-	}
-	if !strings.HasSuffix(apiEndpoint, "/") {
-		apiEndpoint += "/" // Ensure the API endpoint ends with a slash
-	}
-	d.apiEndpoint = apiEndpoint
-
-	if err := d.setTokenAuth(); err != nil {
+	if err := d.setTokenAuth(token); err != nil {
 		slog.Error("Failed to set token auth for dCache client", "error", err)
 		return nil
 	}
 
-	if retrySleep > 0 {
-		d.retrySleep = retrySleep
-	}
-
-	if fileCountLimit <= 0 {
-		d.fileCountLimit = uint(defaultFileCountLeft)
-		d.fileCountLeft.Store(defaultFileCountLeft)
-		return d
-	}
-	d.fileCountLimit = uint(fileCountLimit)
-	d.fileCountLeft.Store(int32(fileCountLimit))
+	d.apiEndpoint = fixAPIEndpoint(apiEndpoint)
+	d.setFileCountLimit(fileCountLimit)
+	d.setRetrySleep(retrySleep)
 
 	return d
-}
-
-// setTokenAuth sets the Authorization header for the HTTP request using the token provided to the dCacheClient.
-func (d *dCacheClient) setTokenAuth() error {
-	if d.token == "" {
-		return errNoTokenProvided
-	}
-	d.authFunc = func(req *http.Request) error {
-		if req == nil {
-			return errNilRequest
-		}
-		req.Header.Set("Authorization", "Bearer "+d.token)
-		return nil
-	}
-	return nil
 }
 
 // getFilesList retrieves a list of files and directories from the specified dCache source URL.
@@ -433,9 +399,54 @@ func (d *dCacheClient) fileListingToFileEntry(listing dCacheFileListing, filenam
 	return f, nil
 }
 
+// setTokenAuth sets the Authorization header for the HTTP request using the token provided to the dCacheClient.
+func (d *dCacheClient) setTokenAuth(token string) error {
+	if token == "" {
+		return errNoTokenProvided
+	}
+	d.token = strings.TrimSpace(token) // Ensure no leading/trailing spaces
+	d.authFunc = func(req *http.Request) error {
+		if req == nil {
+			return errNilRequest
+		}
+		req.Header.Set("Authorization", "Bearer "+d.token)
+		return nil
+	}
+	return nil
+}
+
 // trimAPIEndpoint remove the dCacheClient API endpoint prefix from the urlPath
 func (d *dCacheClient) trimAPIEndpoint(urlPath string) string {
 	return strings.TrimPrefix(urlPath, d.apiEndpoint)
+}
+
+func (d *dCacheClient) setFileCountLimit(lim int) {
+	// Default
+	if lim <= 0 {
+		d.fileCountLimit = uint(defaultFileCountLeft)
+		d.fileCountLeft.Store(defaultFileCountLeft)
+		return
+	}
+
+	d.fileCountLimit = uint(lim)
+	d.fileCountLeft.Store(int32(lim))
+}
+
+func (d *dCacheClient) setRetrySleep(sleep time.Duration) {
+	if sleep <= 0 {
+		d.retrySleep = defaultRetrySleep
+		return
+	}
+	d.retrySleep = sleep
+}
+
+// fixAPIEndpoint ensures that the API endpoint is properly formatted with leading and trailing slashes.
+func fixAPIEndpoint(apiEndpoint string) string {
+	a := strings.Trim(apiEndpoint, "/") // Remove leading and trailing slashes
+	if a == "" {
+		return "/" // If the API endpoint is empty, return the root endpoint
+	}
+	return "/" + a + "/" // Ensure the API endpoint starts and ends with a slash
 }
 
 // PNFSToHTTPS converts a given PNFS file path to an HTTPS URL using the specified host and port.

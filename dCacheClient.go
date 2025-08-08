@@ -19,8 +19,12 @@ import (
 )
 
 // Metrics
-// TODO Add relevant metrics
 var (
+	dCacheClientGetFilesHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "jobsub_pnfs_dropbox_cleanup",
+		Name:      "dcache_client_get_files_duration_seconds",
+		Help:      "The duration of dCache client GET files operations",
+	})
 	dCacheClientRemoveFileHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "jobsub_pnfs_dropbox_cleanup",
 		Name:      "dcache_client_remove_file_duration_seconds",
@@ -44,6 +48,7 @@ var (
 
 func init() {
 	// Register the metrics
+	metricsRegistry.MustRegister(dCacheClientGetFilesHistogram)
 	metricsRegistry.MustRegister(dCacheClientRemoveFileHistogram)
 	slog.Debug("Registered dCache client metrics")
 }
@@ -141,9 +146,11 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 	// Perform the request in a retry loop
 	var resp *http.Response
 	for i := range int(d.retryCount + 1) {
+		startRequest := time.Now()
 		funcLogger.Debug("Sending request to get files list", "url", req.URL.String(), "attempt", i+1)
 		resp, err = d.client.Do(req)
 		if err == nil {
+			dCacheClientGetFilesHistogram.Observe(time.Since(startRequest).Seconds())
 			break // Successful request: break out of the retry loop
 		}
 

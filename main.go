@@ -284,13 +284,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 	// 1. Get files list from pnfs dropbox
 	startGetDropboxFiles := time.Now()
-	// addedEnvironment := []string{"BEARER_TOKEN=" + string(tok)}
-
-	// gClient := newGfal2Client(k.Int("totalFileCountLimit"), uint(k.Int("gfal2.retryCount")), retryDuration, addedEnvironment)
-	apiEndpoint := k.String("dCache.apiEndpoint")
-	// TODO Make this a func?
-	apiEndpoint = "/" + strings.TrimLeft(apiEndpoint, "/")  // Ensure the API endpoint has only one leading slash
-	apiEndpoint = strings.TrimRight(apiEndpoint, "/") + "/" // Ensure the API endpoint has only one trailing slash
+	apiEndpoint := fixAPIEndpoint(k.String("dCache.apiEndpoint"))
 
 	dClient := newDCacheClient(
 		string(tok),
@@ -419,23 +413,13 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	startFilterFiles := time.Now()
 
 	funcLogger.Debug("Are the files being used by condor jobs?")
+	// We can safely delete keys and future iterations' keys while ranging over the map
+	// See https://stackoverflow.com/a/23230406
 	for _, entry := range fileMap {
-		// TODO make this a separate Utility func that we can test!
-		func(e *FileEntry) {
-			removeFileAndAncestorsFromDeleteList := func() {
-				delete(fileMap, e.Name())
-				_parent := e.parent
-				for _parent != nil {
-					funcLogger.Debug("Removing parent from deletion list", "fileEntry.parent", _parent.Name())
-					delete(fileMap, _parent.Name())
-					_parent = _parent.parent
-				}
-			}
-			if _, ok := jobFiles[e.Name()]; ok {
-				funcLogger.Debug("File is in job files, so we will not delete it:", "filename", e.Name())
-				removeFileAndAncestorsFromDeleteList()
-			}
-		}(entry)
+		if _, ok := jobFiles[entry.Name()]; ok {
+			funcLogger.Debug("File is in job files, so we will not delete it:", "filename", entry.Name())
+			removeFileAndAncestorsFromDeleteList(entry, fileMap)
+		}
 	}
 
 	// If we have no files left to delete, or if we're in test mode, we can stop here

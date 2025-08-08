@@ -240,3 +240,87 @@ func TestGetScheddFiles(t *testing.T) {
 		})
 	}
 }
+
+func TestRemoveFileAndAncestorsFromDeleteList(t *testing.T) {
+	// Create a mock file entry structure
+	root := &FileEntry{filename: "root"}
+	child1 := &FileEntry{filename: "child1", parent: root}
+	child2 := &FileEntry{filename: "child2", parent: root}
+	grandchild := &FileEntry{filename: "grandchild", parent: child1}
+	doesntexist := &FileEntry{filename: "doesntexist", parent: root}
+
+	type testCase struct {
+		description string
+		fileEntry   *FileEntry
+		fileMap     map[string]*FileEntry
+		expectedMap map[string]*FileEntry
+	}
+
+	testCases := []testCase{
+		{
+			description: "file provided that is not in filemap",
+			fileEntry:   doesntexist,
+			fileMap: map[string]*FileEntry{
+				"root":       root,
+				"child1":     child1,
+				"child2":     child2,
+				"grandchild": grandchild,
+			},
+			expectedMap: map[string]*FileEntry{
+				"root":       root,
+				"child1":     child1,
+				"child2":     child2,
+				"grandchild": grandchild,
+			},
+		},
+		{
+			description: "remove grandchild and its ancestors",
+			fileEntry:   grandchild,
+			fileMap: map[string]*FileEntry{
+				"root":       root,
+				"child1":     child1,
+				"child2":     child2,
+				"grandchild": grandchild,
+			},
+			expectedMap: map[string]*FileEntry{
+				"child2": child2,
+			},
+		},
+		{
+			description: "remove child2 and its ancestors",
+			fileEntry:   child2,
+			fileMap: map[string]*FileEntry{
+				"root":       root,
+				"child1":     child1,
+				"child2":     child2,
+				"grandchild": grandchild,
+			},
+			expectedMap: map[string]*FileEntry{
+				"child1":     child1,
+				"grandchild": grandchild,
+			},
+		},
+		{
+			description: "remove root, all else should stay",
+			fileEntry:   root,
+			fileMap: map[string]*FileEntry{
+				"root":       root,
+				"child1":     child1,
+				"child2":     child2,
+				"grandchild": grandchild,
+			},
+			expectedMap: map[string]*FileEntry{
+				"child1":     child1,
+				"child2":     child2,
+				"grandchild": grandchild,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			removeFileAndAncestorsFromDeleteList(tc.fileEntry, tc.fileMap)
+			assert.Equal(t, tc.expectedMap, tc.fileMap)
+		})
+	}
+}

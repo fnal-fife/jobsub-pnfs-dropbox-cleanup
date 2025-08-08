@@ -18,6 +18,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// Defaults
+var (
+	defaultRetrySleep    time.Duration = 5 * time.Second // Default sleep time between retries
+	defaultFileCountLeft int32         = 1000            // Default file count limit
+)
+
 // Metrics
 var (
 	dCacheClientGetFilesHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
@@ -31,20 +37,6 @@ var (
 		Help:      "The duration of dCache client delete operations",
 	})
 )
-
-var (
-	defaultRetrySleep    time.Duration = 5 * time.Second // Default sleep time between retries
-	defaultFileCountLeft int32         = 1000            // Default file count limit
-)
-
-// Steps:
-// 0. setTokenAuth func - DONE
-// 0. Check with delete method - DONE
-// 1. Get client working - DONE
-// 2. With recursion - DONE
-//4. with retries - done here, need to update run() - DONE
-// 5. Refactor code if needed, like moving PNFSToTHTTPS here, and docstrings - DONE
-// 6. Update tests to make sure we're checking all cases - esp the case where excluded some files
 
 func init() {
 	// Register the metrics
@@ -344,11 +336,6 @@ func (d *dCacheClient) removeFile(ctx context.Context, urlPath string) error {
 	return nil
 }
 
-var (
-	errNoTokenProvided = fmt.Errorf("no token provided to dCache client")
-	errNilRequest      = fmt.Errorf("nil request provided to dCache client")
-)
-
 // setGetHeaders sets the necessary headers for an HTTP GET request, including authorization and
 // the "Accept: application/json" header. It returns an error if the request is nil or if
 // setting the authorization header fails.
@@ -476,6 +463,14 @@ func mSecToUnixTuple(mSec int64) (int64, int64) {
 	return seconds, nanoseconds
 }
 
+// Errors
+
+var (
+	errNoTokenProvided        = fmt.Errorf("no token provided to dCache client")
+	errNilRequest             = fmt.Errorf("nil request provided to dCache client")
+	errFileCountLimitExceeded = errors.New("file parse limit exceeded")
+)
+
 // errFileFlaggedToExclude is an error type used to indicate that a file was flagged to be excluded by the excludeFunc.
 // It contains the filename that was flagged.
 type errFileFlaggedToExclude struct {
@@ -484,4 +479,18 @@ type errFileFlaggedToExclude struct {
 
 func (e *errFileFlaggedToExclude) Error() string {
 	return fmt.Sprintf("file %s flagged to be excluded by excludeFunc", e.filename)
+}
+
+// errProcessingFiles is an error type that holds a slice of errors encountered while processing files.
+type errProcessingFiles struct {
+	errors []error
+}
+
+func (e *errProcessingFiles) Error() string {
+	var b strings.Builder
+	for _, err := range e.errors {
+		b.WriteString(err.Error())
+		b.WriteString(", ")
+	}
+	return strings.TrimRight(b.String(), ", ")
 }

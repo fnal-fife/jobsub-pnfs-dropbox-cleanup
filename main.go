@@ -90,9 +90,15 @@ var (
 	)
 )
 
-// TODO - should we move some of this stuff into run()?  Like flag parsing, config loading, etc.?
-func main() {
-	// Read flags
+func init() {
+	// Register metrics
+	metricsRegistry.MustRegister(promDuration)
+	metricsRegistry.MustRegister(getDropboxFilesListByExptDuration)
+	metricsRegistry.MustRegister(numFilesDeleted)
+	metricsRegistry.MustRegister(numErrorsDeletingFiles)
+}
+
+func setFlags() *flag.FlagSet {
 	f := flag.NewFlagSet("jobsub-pnfs-dropbox-cleanup", flag.ContinueOnError)
 	f.Usage = func() {
 		fmt.Println("Usage: jobsub-pnfs-dropbox-cleanup [options]")
@@ -105,6 +111,35 @@ func main() {
 	f.BoolP("test", "t", false, "Run in test mode (no actual deletions)")
 	f.Bool("version", false, "Print version information and exit")
 
+	return f
+}
+
+func setLoggingWithLoki(logger *slog.Logger, logLevel slog.Leveler) (cleanup func()) {
+	// Set up fanout logger that logs to stdout and loki
+	lokiConfig, _ := loki.NewDefaultConfig(k.String("loki.url"))
+	lokiClient, _ := loki.New(lokiConfig)
+	// We don't need to wrap this in a sync.Once to handle the error condition when run() is called below, because Stop()
+	// already has its own sync.Once.  Thus, we can safely call or defer the call to Stop() as many times as we want
+	cleanup = func() {
+		lokiClient.Stop() // Stop the Loki client to send logs
+	}
+
+	logger = slog.New(slogmulti.Fanout(
+		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: logLevel,
+		}),
+		slogloki.Option{Level: logLevel, Client: lokiClient}.NewLokiHandler()),
+	)
+	logger = logger.
+		With("environment", k.String("loki.environment")).
+		With("service", k.String("service"))
+
+	return cleanup
+}
+
+func main() {
+	// Read flags
+	f := setFlags()
 	f.Parse(os.Args[1:])
 
 	// Check for version flag
@@ -130,92 +165,73 @@ func main() {
 		panic(fmt.Sprintf("error loading config: %v", err))
 	}
 
-	// Set up logging
-	logLevel := slog.LevelInfo
-	if k.Bool("debug") {
-		logLevel = slog.LevelDebug
-	}
+	// Everything here is running in a func so that the deferred actions take place before os.Exit
+	// is called
+	var exitCode int
+	func() {
+		// Set up logging
+		logLevel := slog.LevelInfo
+		if k.Bool("debug") {
+			logLevel = slog.LevelDebug
+		}
+		logCleanup := setLoggingWithLoki(logger, logLevel)
 
-	// Set up fanout logger that logs to stdout and loki
-	lokiConfig, _ := loki.NewDefaultConfig(k.String("loki.url"))
-	lokiClient, _ := loki.New(lokiConfig)
-	// We don't need to wrap this in a sync.Once to handle the error condition when run() is called below, because Stop()
-	// already has its own sync.Once.  Thus, we can safely call or defer the call to Stop() as many times as we want
-	defer lokiClient.Stop() // Stop the Loki client to send logs
-
-	logger = slog.New(slogmulti.Fanout(
-		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-			Level: logLevel,
-		}),
-		slogloki.Option{Level: logLevel, Client: lokiClient}.NewLokiHandler()),
-	)
-	logger = logger.
-		With("environment", k.String("loki.environment")).
-		With("service", k.String("service"))
-	funcLogger := logger.With("caller", "main.main")
-
-	if k.Bool("debug") {
+		funcLogger := logger.With("caller", "main.main")
+		funcLogger.Info("Initialized logging")
 		funcLogger.Debug("Debug logging enabled")
-	}
-	funcLogger.Info("Initialized logging")
+		defer logCleanup()
 
-	// Set up metrics
-	pusher = push.New(k.String("prometheus.pushURL"), k.String("service")).Gatherer(metricsRegistry)
-	defer func() {
-		// Push metrics to the Prometheus push gateway
-		if err := pusher.Push(); err != nil {
-			funcLogger.Error("error pushing metrics to Prometheus push gateway", "error", err)
+		// Set up metrics pusher
+		pusher = push.New(k.String("prometheus.pushURL"), k.String("service")).Gatherer(metricsRegistry)
+		defer func() {
+			// Push metrics to the Prometheus push gateway
+			if err := pusher.Push(); err != nil {
+				funcLogger.Error("error pushing metrics to Prometheus push gateway", "error", err)
+			}
+			funcLogger.Debug("Pushed metrics to Prometheus push gateway", "pushURL", k.String("prometheus.pushURL"))
+		}()
+
+		// Set up our context with timeout
+		timeout, err := time.ParseDuration(k.String("timeout"))
+		if err != nil {
+			funcLogger.Error("error getting timeout from config. Using default timeout", "error", err, "defaultTimeout", defaultTimeout)
+			timeout = defaultTimeout
 		}
-		funcLogger.Debug("Pushed metrics to Prometheus push gateway", "pushURL", k.String("prometheus.pushURL"))
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		var e1 *errDeletingFiles
+		err = run(ctx, k)
+		if err != nil {
+			errMsg := "error running dropbox cleanup: "
+			switch {
+			// All the OK cases: exit 0
+			case errors.Is(err, errNoFilesInDropbox), errors.Is(err, errNoFilesToDelete):
+				funcLogger.With("experiment", k.String("experiment")).Info(err.Error())
+				exitCode = 0
+			// Other cases
+			case errors.Is(err, errUsage):
+				f.Usage()
+				exitCode = 1
+			case errors.Is(err, errNoVaultTokenFile), errors.Is(err, errVaultTokenTooOld):
+				funcLogger.Error(err.Error(), "vaultTokenFile", k.String("vault.vaultTokenFile"))
+				exitCode = 2
+			case errors.Is(err, errNoSchedds):
+				funcLogger.Error(errMsg + "No condor schedds found. Please check your condor pool configuration.")
+				exitCode = 3
+			case errors.Is(err, errScheddQueryFailed):
+				funcLogger.Error(errMsg + "No condor schedds were queried successfully. Please check your condor pool configuration or this script's configuration")
+				exitCode = 4
+			case errors.As(err, &e1):
+				funcLogger.Error(err.Error())
+				exitCode = 5
+			default:
+				funcLogger.With("experiment", k.String("experiment")).Error(errMsg + err.Error())
+				exitCode = 1
+			}
+		}
 	}()
-	// Register metrics
-	metricsRegistry.MustRegister(promDuration)
-	metricsRegistry.MustRegister(getDropboxFilesListByExptDuration)
-	metricsRegistry.MustRegister(numFilesDeleted)
-	metricsRegistry.MustRegister(numErrorsDeletingFiles)
-
-	// Set up our context with timeout
-	timeout, err := time.ParseDuration(k.String("timeout"))
-	if err != nil {
-		funcLogger.Error("error getting timeout from config. Using default timeout", "error", err, "defaultTimeout", defaultTimeout)
-		timeout = defaultTimeout
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	var e1 *errDeletingFiles
-	err = run(ctx, k)
-	if err != nil {
-		var exitCode int
-		errMsg := "error running dropbox cleanup: "
-		switch {
-		// All the OK cases: exit 0
-		case errors.Is(err, errNoFilesInDropbox), errors.Is(err, errNoFilesToDelete):
-			funcLogger.With("experiment", k.String("experiment")).Info(err.Error())
-			exitCode = 0
-		// Other cases
-		case errors.Is(err, errUsage):
-			f.Usage()
-			exitCode = 1
-		case errors.Is(err, errNoVaultTokenFile), errors.Is(err, errVaultTokenTooOld):
-			funcLogger.Error(err.Error(), "vaultTokenFile", k.String("vault.vaultTokenFile"))
-			exitCode = 2
-		case errors.Is(err, errNoSchedds):
-			funcLogger.Error(errMsg + "No condor schedds found. Please check your condor pool configuration.")
-			exitCode = 3
-		case errors.Is(err, errScheddQueryFailed):
-			funcLogger.Error(errMsg + "No condor schedds were queried successfully. Please check your condor pool configuration or this script's configuration")
-			exitCode = 4
-		case errors.As(err, &e1):
-			funcLogger.Error(err.Error())
-			exitCode = 5
-		default:
-			funcLogger.With("experiment", k.String("experiment")).Error(errMsg + err.Error())
-			exitCode = 1
-		}
-		lokiClient.Stop() // Stop the Loki client before exiting to send logs
-		os.Exit(exitCode)
-	}
+	os.Exit(exitCode)
 }
 
 func run(ctx context.Context, k *koanf.Koanf) error {
@@ -236,12 +252,6 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		funcLogger.Error("error parsing minimum vault token time left duration. Using default value", "error", err)
 		minTimeLeft = defaultVaultTokenTimeLeft
 	}
-	// var retryDuration time.Duration
-	// retryDuration, err = time.ParseDuration(k.String("gfal2.retrySleep"))
-	// if err != nil {
-	// 	funcLogger.Error("error parsing gfal2 retry sleep duration. Will use default", "error", err)
-	// 	retryDuration = 0
-	// }
 	fileAgeCutoff, err := time.ParseDuration(k.String("deleteFilesOlderThan"))
 	if err != nil {
 		funcLogger.Error("error parsing configured file age cutoff duration", "error", err)

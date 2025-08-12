@@ -114,7 +114,7 @@ func setFlags() *flag.FlagSet {
 	return f
 }
 
-func setLoggingWithLoki(logger *slog.Logger, logLevel slog.Leveler) (cleanup func()) {
+func setLoggingWithLoki(logLevel slog.Leveler) (initLogger *slog.Logger, cleanup func()) {
 	// Set up fanout logger that logs to stdout and loki
 	lokiConfig, _ := loki.NewDefaultConfig(k.String("loki.url"))
 	lokiClient, _ := loki.New(lokiConfig)
@@ -124,17 +124,17 @@ func setLoggingWithLoki(logger *slog.Logger, logLevel slog.Leveler) (cleanup fun
 		lokiClient.Stop() // Stop the Loki client to send logs
 	}
 
-	logger = slog.New(slogmulti.Fanout(
+	initLogger = slog.New(slogmulti.Fanout(
 		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 			Level: logLevel,
 		}),
 		slogloki.Option{Level: logLevel, Client: lokiClient}.NewLokiHandler()),
 	)
-	logger = logger.
+	initLogger = initLogger.
 		With("environment", k.String("loki.environment")).
 		With("service", k.String("service"))
 
-	return cleanup
+	return initLogger, cleanup
 }
 
 func main() {
@@ -170,11 +170,12 @@ func main() {
 	var exitCode int
 	func() {
 		// Set up logging
+		var logCleanup func()
 		logLevel := slog.LevelInfo
 		if k.Bool("debug") {
 			logLevel = slog.LevelDebug
 		}
-		logCleanup := setLoggingWithLoki(logger, logLevel)
+		logger, logCleanup = setLoggingWithLoki(logLevel) // The returned *slog.Logger gets assigned to our global logger
 
 		funcLogger := logger.With("caller", "main.main")
 		funcLogger.Info("Initialized logging")

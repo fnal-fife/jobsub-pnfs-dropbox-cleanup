@@ -1,0 +1,4 @@
+#!/bin/sh
+
+echo $_condor_SEC_CLIENT_AUTHENTICATION_METHODS
+exit 0

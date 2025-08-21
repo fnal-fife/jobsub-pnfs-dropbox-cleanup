@@ -227,9 +227,16 @@ func TestGetScheddFiles(t *testing.T) {
 				tc.authSetupFunc(t)
 			}
 
+			// Mock condor_config_val SEC_CLIENT_AUTHENTICATION_METHODS to return the value set at _condor_SEC_CLIENT_AUTHENTICATION_METHODS
+			cleanupFunc1 := useFakeExecutable(t,
+				"condor_config_val",
+				filepath.Join("internal", "testscripts", "condor_config_val-SEC_CLIENT_AUTHENTICATION_METHODS"),
+			)
+			defer cleanupFunc1() // Ensure we clean up the mock command
+
 			if tc.condorQMockScript != "" {
-				cleanupFunc := useFakeExecutable(t, "condor_q", tc.condorQMockScript)
-				defer cleanupFunc() // Ensure we clean up the mock command
+				cleanupFunc2 := useFakeExecutable(t, "condor_q", tc.condorQMockScript)
+				defer cleanupFunc2() // Ensure we clean up the mock command
 			}
 
 			// Run the test

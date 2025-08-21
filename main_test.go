@@ -167,9 +167,13 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
-					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "exit1")),                       // Mock a failing condor_q command
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),                                  // Mock a good condor_status command
+					useFakeExecutable(t, "condor_config_val", filepath.Join("internal", "testscripts", "condor_config_val-SEC_CLIENT_AUTHENTICATION_METHODS")), // Mock a working condor_config_val command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "exit1")),                                                        // Mock a failing condor_q command
 				}
+
+				// Set up fake idtokens dir
+				fakeGoodIDTokenAuthSetup(t)
 
 				cleanupFunc := func() {
 					for _, cleanup := range mockCleanupFuncs {
@@ -193,9 +197,13 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")), // Mock a good condor_status command
-					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads")),           // Mock a condor_q command that returns the same file as gfal-ls
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),                                  // Mock a good condor_status command
+					useFakeExecutable(t, "condor_config_val", filepath.Join("internal", "testscripts", "condor_config_val-SEC_CLIENT_AUTHENTICATION_METHODS")), // Mock a working condor_config_val command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads")),                                            // Mock a condor_q command that returns the same file as gfal-ls
 				}
+
+				// Set up fake idtokens dir
+				fakeGoodIDTokenAuthSetup(t)
 
 				cleanupFunc := func() {
 					for _, cleanup := range mockCleanupFuncs {
@@ -218,9 +226,13 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
-					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a condor_q command that returns the same file as gfal-ls
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),                                  // Mock a good condor_status command
+					useFakeExecutable(t, "condor_config_val", filepath.Join("internal", "testscripts", "condor_config_val-SEC_CLIENT_AUTHENTICATION_METHODS")), // Mock a working condor_config_val command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")),                                 // Mock a condor_q command that returns the same file as gfal-ls
 				}
+
+				// Set up fake idtokens dir
+				fakeGoodIDTokenAuthSetup(t)
 
 				cleanupFunc := func() {
 					for _, cleanup := range mockCleanupFuncs {
@@ -243,9 +255,13 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
-					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a condor_q command that returns the same file as gfal-ls
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),                                  // Mock a good condor_status command
+					useFakeExecutable(t, "condor_config_val", filepath.Join("internal", "testscripts", "condor_config_val-SEC_CLIENT_AUTHENTICATION_METHODS")), // Mock a working condor_config_val command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")),                                 // Mock a condor_q command that returns the same file as gfal-ls
 				}
+
+				// Set up fake idtokens dir
+				fakeGoodIDTokenAuthSetup(t)
 
 				cleanupFunc := func() {
 					for _, cleanup := range mockCleanupFuncs {
@@ -268,9 +284,13 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
-					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a working condor_q command
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),                                  // Mock a good condor_status command
+					useFakeExecutable(t, "condor_config_val", filepath.Join("internal", "testscripts", "condor_config_val-SEC_CLIENT_AUTHENTICATION_METHODS")), // Mock a working condor_config_val command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")),                                 // Mock a working condor_q command
 				}
+
+				// Set up fake idtokens dir
+				fakeGoodIDTokenAuthSetup(t)
 
 				cleanupFunc := func() {
 					for _, cleanup := range mockCleanupFuncs {
@@ -293,9 +313,13 @@ func TestRun(t *testing.T) {
 
 				mockCleanupFuncs := []mockCleanup{
 					writeGoodHtgettoken(t), // Mock a working htgettoken command
-					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),  // Mock a good condor_status command
-					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")), // Mock a working condor_q command
+					useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),                                  // Mock a good condor_status command
+					useFakeExecutable(t, "condor_config_val", filepath.Join("internal", "testscripts", "condor_config_val-SEC_CLIENT_AUTHENTICATION_METHODS")), // Mock a working condor_config_val command
+					useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")),                                 // Mock a working condor_q command
 				}
+
+				// Set up fake idtokens dir
+				fakeGoodIDTokenAuthSetup(t)
 
 				cleanupFunc := func() {
 					for _, cleanup := range mockCleanupFuncs {

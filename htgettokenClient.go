@@ -146,7 +146,8 @@ func (h *htgettokenClient) withKerberosKeytabAuth(keytabPath, principal string) 
 	return h
 }
 
-// getToken runs htgettoken to obtain a SciToken from the token issuer
+// getToken runs htgettoken to obtain a SciToken from the token issuer. The path to the SciToken is stored in
+// the outFile field of the htgettokenClient, and the contents of the SciToken are returned as a byte slice
 func (h *htgettokenClient) getToken(ctx context.Context, issuer, role string) ([]byte, error) {
 	start := time.Now()
 	funcLogger := logger.With("caller", "htgettokenClient.getToken")

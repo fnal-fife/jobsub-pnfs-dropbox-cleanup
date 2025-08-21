@@ -290,6 +290,11 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	if err != nil {
 		return fmt.Errorf("error getting and validating token: %w", err)
 	}
+	defer func() {
+		os.Remove(h.outFile) // Clean up the token file after we're done
+		funcLogger.Debug("Removed bearer token file", "file", h.outFile)
+	}()
+
 	promDuration.WithLabelValues("getBearerToken").Set(time.Since(startGetBearerToken).Seconds())
 	promDuration.WithLabelValues("setup").Set(time.Since(startSetup).Seconds())
 

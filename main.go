@@ -109,6 +109,7 @@ func setFlags() *flag.FlagSet {
 	f.StringP("experiment", "e", "", "Experiment name to use for dropbox cleanup")
 	f.StringP("config", "c", defaultConfigFilePath, "Config file to load (default: /etc/jobsub-pnfs-dropbox-cleanup.yml)")
 	f.BoolP("debug", "d", false, "Enable debug logging")
+	f.BoolP("help", "h", false, "Print help and exit")
 	f.BoolP("test", "t", false, "Run in test mode (no actual deletions)")
 	f.Bool("version", false, "Print version information and exit")
 
@@ -142,6 +143,12 @@ func main() {
 	// Read flags
 	f := setFlags()
 	f.Parse(os.Args[1:])
+
+	// Check for help flag
+	if helpCalled, _ := f.GetBool("help"); helpCalled {
+		f.Usage()
+		os.Exit(0)
+	}
 
 	// Check for version flag
 	if versionCalled, _ := f.GetBool("version"); versionCalled {

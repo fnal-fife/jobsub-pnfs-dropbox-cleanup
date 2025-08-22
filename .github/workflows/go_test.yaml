@@ -36,7 +36,7 @@ jobs:
     - name: Create missing executables
       run: >
         touch $RUNNER_TEMP/htgettoken
-        touch $RUNNER_TEMP/httokendecode
+        $RUNNER_TEMP/httokendecode
         $RUNNER_TEMP/condor_status
         $RUNNER_TEMP/condor_config_val
         $RUNNER_TEMP/condor_q

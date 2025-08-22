@@ -297,7 +297,10 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	}
 	if deleteBearerTokenAfterRun {
 		defer func() {
-			os.Remove(h.outFile) // Clean up the token file after we're done
+			// Clean up the token file after we're done
+			if err = os.Remove(h.outFile); err != nil {
+				funcLogger.Warn("Could not remove bearer token file", "file", h.outFile)
+			}
 			funcLogger.Debug("Removed bearer token file", "file", h.outFile)
 		}()
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"math"
 	"os"
@@ -286,10 +287,24 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		h = h.withKerberosKeytabAuth(k.String("vault.kerberosKeytabPath"), k.String("vault.kerberosPrincipal"))
 	}
 
+	deleteBearerTokenAfterRun := false // We only want to delete a bearer token if we created it
+	if _, err := os.Stat(h.outFile); err != nil && errors.Is(err, fs.ErrNotExist) {
+		deleteBearerTokenAfterRun = true
+	}
 	tok, err := h.getToken(ctx, k.String("vault.experiment"), k.String("vault.role"))
 	if err != nil {
 		return fmt.Errorf("error getting and validating token: %w", err)
 	}
+	if deleteBearerTokenAfterRun {
+		defer func() {
+			// Clean up the token file after we're done
+			if err = os.Remove(h.outFile); err != nil {
+				funcLogger.Warn("Could not remove bearer token file", "file", h.outFile)
+			}
+			funcLogger.Debug("Removed bearer token file", "file", h.outFile)
+		}()
+	}
+
 	promDuration.WithLabelValues("getBearerToken").Set(time.Since(startGetBearerToken).Seconds())
 	promDuration.WithLabelValues("setup").Set(time.Since(startSetup).Seconds())
 

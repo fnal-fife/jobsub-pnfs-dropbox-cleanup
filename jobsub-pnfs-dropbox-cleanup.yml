@@ -1,47 +1,38 @@
 service: "jobsub-pnfs-dropbox-cleanup"
 timeout: "10m"
-# deleteFilesOlderThan: "720h"  # 30 days
-deleteFilesOlderThan: "1s"  
+deleteFilesOlderThan: "720h"  # 30 days
 
 exptNameOverride:
-  "gm2": "GM2/resilient/jobsub_stage"
-  "mu2e": "mu2e/scratch/users/sbhat/fake_resilient/jobsub_stage/"  # TODO This is just for testing
+  "gm2": "/path/to/somewhere/else"
 
 dCache:
-  hostPort: ***REMOVED***
+  hostPort: "dCacheHost"
   apiEndpoint: "/api/v1/namespace"
-  totalFileCountLimit: 9
+  totalFileCountLimit: 50
   retryCount: 5
   retrySleep: "2s"
-# totalFileCountLimit: 50
 
 condor:
-  pool: ***REMOVED***
+  pool: "collector_host.domain"
   jobConstraint: "!IsUndefined(PNFS_INPUT_FILES)"
   scheddConstraint: "IsJobsubLite == true && InDowntime == false"
   authMethod: "IDTOKENS"
 
 vault:
-  server: ***REMOVED***
-  # authMethod: "kerberos" # "kerberos" is only supported method
-  # kerberosKeytabPath: /path/to/keytab 
-  # kerberosPrincipal: ***REMOVED***
-  experiment: "mu2e"
-  # experiment: "fermilab"
-  role: ""
-  # role: "jobsubadmin"
-  vaultTokenFile: "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token-test"
-  # defaultVaultTokenFile  = "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
-  bearerTokenFile: "/tmp/bt_jobsub-pnfs-dropbox-cleanup-test"
-  # defaultBearerTokenFile = "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
+  server: "vaultserver.domain"
+  authMethod: "kerberos" # "kerberos" is only supported method
+  kerberosKeytabPath: /path/to/keytab 
+  kerberosPrincipal: "some_service_principal@REALM"
+  experiment: "token-issuer"
+  role: "admin_role"
+  vaultTokenFile: "/var/lib/jobsub-pnfs-dropbox-cleanup/vt_token"
+  bearerTokenFile: "/tmp/bt_jobsub-pnfs-dropbox-cleanup"
   vaultTokenAgeCutoff: "168h" # 7 days
   minVaultTokenTimeLeft: "72h" # 3 days
 
 loki:
-  # url: ***REMOVED***
   url: "http://localhost:3100/loki/api/v1/push"
   environment: "dev"
 
 prometheus:
-  # pushURL: ***REMOVED***
   pushURL: "http://localhost:9091"

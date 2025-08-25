@@ -107,7 +107,7 @@ func setFlags() *flag.FlagSet {
 		f.PrintDefaults()
 	}
 	f.StringP("experiment", "e", "", "Experiment name to use for dropbox cleanup")
-	f.StringP("config", "c", defaultConfigFilePath, "Config file to load (default: /etc/jobsub-pnfs-dropbox-cleanup.yml)")
+	f.StringP("config", "c", defaultConfigFilePath, fmt.Sprintf("Config file to load (default: %s)", defaultConfigFilePath))
 	f.BoolP("debug", "d", false, "Enable debug logging")
 	f.BoolP("help", "h", false, "Print help and exit")
 	f.BoolP("test", "t", false, "Run in test mode (no actual deletions)")

@@ -11,7 +11,7 @@ import (
 	"github.com/knadh/koanf/v2"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/shreyb/jobsub-pnfs-dropbox-cleanup/internal/testserver"
+	"github.com/fnal-fife/jobsub-pnfs-dropbox-cleanup/internal/testserver"
 )
 
 func TestMain(m *testing.M) {

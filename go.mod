@@ -1,4 +1,4 @@
-module github.com/shreyb/jobsub-pnfs-dropbox-cleanup
+module github.com/fnal-fife/jobsub-pnfs-dropbox-cleanup
 
 go 1.24.3
 

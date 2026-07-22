@@ -195,7 +195,8 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 			dirContents:    nil,
 			parent:         nil,
 			errCheckFunc: func(err error) bool {
-				return assert.ErrorContains(t, err, errFileCountLimitExceeded.Error())
+				e := &errFileCountLimitExceeded{filename: "/pnfs/testexperiment/resilient/jobsub_stage/file1"}
+				return assert.ErrorContains(t, err, e.Error())
 			},
 			expectedEntries: createFileEntriesForJobsubStageDir()[:1],
 		},
@@ -206,7 +207,9 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 			dirContents:    nil,
 			parent:         nil,
 			errCheckFunc: func(err error) bool {
-				return assert.ErrorContains(t, err, errFileCountLimitExceeded.Error())
+				// /pnfs/testexperiment/resilient/jobsub_stage/dir1/file1a
+				e := &errFileCountLimitExceeded{filename: "/pnfs/testexperiment/resilient/jobsub_stage/dir1/file1a"}
+				return assert.ErrorContains(t, err, e.Error())
 			},
 			expectedEntries: createFileEntriesForJobsubStageDirInterruptMidDir(),
 		},
@@ -723,8 +726,7 @@ func createFileEntriesForJobsubStageDir() []*FileEntry {
 func createFileEntriesForJobsubStageDirInterruptMidDir() []*FileEntry {
 	sl := createFileEntriesForJobsubStageDir()[:3]
 	last := sl[len(sl)-1]
-	last.parent.containsFiles = nil // Simulate an interrupted directory listing
-	sl[len(sl)-1] = last            // Update the last entry
+	sl[len(sl)-1] = last // Update the last entry
 	return sl
 }
 

@@ -222,13 +222,14 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 			)
 			files, err := d.getFilesList(ctx, newSource, nil, entry, excludeFunc)
 			if err != nil {
-				// If we hit the file count limit mid-directory, add the files that we got back from the getFilesList call, but do NOT add the directory, since the directory may not have been
-				// fully parsed.
+				// If we hit the file count limit mid-directory, add the files that we got back from the getFilesList call,
 				// Then return what we have
-				if errors.Is(err, errFileCountLimitExceeded) {
+				var err2 *errFileCountLimitExceeded
+				if errors.As(err, &err2) {
 					funcLogger.Warn("File count limit exceeded mid-directory.", "directory", entry.filename)
-					dirContents = append(dirContents, files...)   // Add the files we got back from the getFilesList call
-					return dirContents, errFileCountLimitExceeded // Return what we have
+					entry.containsFiles = files
+					dirContents = append(dirContents, files...) // Add the files we got back from the getFilesList call
+					return dirContents, err2                    // Return what we have
 				}
 
 				// If we excluded some files, we should still add any entries we got back from the recursive call
@@ -275,7 +276,7 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 		d.fileCountLeft.Add(-1)
 		if d.fileCountLeft.Load() == 0 {
 			funcLogger.Warn("File count limit exceeded, stopping")
-			return dirContents, errFileCountLimitExceeded
+			return dirContents, &errFileCountLimitExceeded{filename: entry.filename}
 		}
 	}
 
@@ -466,9 +467,8 @@ func mSecToUnixTuple(mSec int64) (int64, int64) {
 // Errors
 
 var (
-	errNoTokenProvided        = fmt.Errorf("no token provided to dCache client")
-	errNilRequest             = fmt.Errorf("nil request provided to dCache client")
-	errFileCountLimitExceeded = errors.New("file parse limit exceeded")
+	errNoTokenProvided = fmt.Errorf("no token provided to dCache client")
+	errNilRequest      = fmt.Errorf("nil request provided to dCache client")
 )
 
 // errFileFlaggedToExclude is an error type used to indicate that a file was flagged to be excluded by the excludeFunc.
@@ -493,4 +493,13 @@ func (e *errProcessingFiles) Error() string {
 		b.WriteString(", ")
 	}
 	return strings.TrimRight(b.String(), ", ")
+}
+
+// errFileCountLimitExceeded is an error type used to indicate that the file count limit has been exceeded during processing.
+type errFileCountLimitExceeded struct {
+	filename string
+}
+
+func (e *errFileCountLimitExceeded) Error() string {
+	return fmt.Sprintf("file parse limit exceeded while processing file %s", e.filename)
 }

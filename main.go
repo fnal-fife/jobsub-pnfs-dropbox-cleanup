@@ -344,9 +344,13 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	filesList, err := dClient.getFilesList(ctx, source, nil, nil, fileIsTooNew)
 	var errFileCountExceeded *errFileCountLimitExceeded
 	var partialSuccessErr *errProcessingFiles
+	var lastFileProcessed string
 	switch {
 	case errors.As(err, &errFileCountExceeded):
+		e := err.(*errFileCountLimitExceeded)
 		funcLogger.Warn("file count limit exceeded. Stopping collecting files now")
+		funcLogger.With("file", e.filename).Debug("Last processed file")
+		lastFileProcessed = e.filename
 	case errors.As(err, &partialSuccessErr):
 		errsLeft := make([]error, 0, len(partialSuccessErr.errors))
 		// Files flagged for exclusion
@@ -551,25 +555,6 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 		// Make sure we don't delete root
 		// Keep walking up the tree and deleting empty directories recursively
-
-		// TODO: There's a bug here. If we stop collecting files in the middle of a directory,
-		// then the parent field of the corresponding FileEntry will contain a FileEntry whose
-		// containsFiles slice is empty, but the directory itself is not empty.  This will cause us to delete the parent directory, which is not what we want.  We need to fix this by making sure that we only delete directories that are actually empty on disk, not just in our fileMap.
-		// dCache deletions to fail.
-
-		// We need to somehow check that if we got a errFileCountLimitExceeded, we maybe store the
-		// FileEntry it last got, and then nil out all the parents for FileEntries whose parent
-		// is the same as the last FileEntry.
-		// So if our last FileEntry was /pnfs/experiment/jobsub_stage/dir1/file.txt,
-		// any FileEntry whose parent is /pnfs/experiment/jobsub_stage/dir1, would have the parent
-		// set to nil.
-
-		// To preserve separation of responsibilities, that should be done here in main or in mainUtils
-		// and NOT at the dCacheClient level.
-
-		// That being said, we may want to change the dCacheClient, as when this kind of thing happens,
-		// the directory containing the last file doesn't get its "containsFiles" slice updated,
-		// and it probably should.  So we do that, AND do the check mentioned abovve.
 		_parent := fileMap[filename].parent
 		for _parent != nil {
 			// Remove the file from our map and from its parent's containsFiles slice
@@ -579,6 +564,13 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 					return f.Name() == filename
 				},
 			)
+
+			// If we stopped processing files because we hit the file count limit mid-directory, then we don't know for sure
+			// if we saw all the files in _parent; thus we can stop and leave cleanup of _parent to a future run.
+			if lastFileProcessed != "" && filepath.Dir(lastFileProcessed) == _parent.Name() {
+				funcLogger.Debug("Parent did not get all files processed, so we will not delete it", "dirName", _parent.Name())
+				break
+			}
 
 			// Check if the parent is empty. If not, we can stop
 			if len(_parent.containsFiles) != 0 {

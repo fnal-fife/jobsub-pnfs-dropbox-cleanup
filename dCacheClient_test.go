@@ -207,7 +207,6 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 			dirContents:    nil,
 			parent:         nil,
 			errCheckFunc: func(err error) bool {
-				// /pnfs/testexperiment/resilient/jobsub_stage/dir1/file1a
 				e := &errFileCountLimitExceeded{filename: "/pnfs/testexperiment/resilient/jobsub_stage/dir1/file1a"}
 				return assert.ErrorContains(t, err, e.Error())
 			},

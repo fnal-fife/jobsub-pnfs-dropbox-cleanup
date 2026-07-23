@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/knadh/koanf/v2"
@@ -43,6 +45,7 @@ func TestRun(t *testing.T) {
 		errIs                  error
 		errContains            string
 		expectedFileDeleteErrs []string
+		extraTests             []func(t *testing.T)
 	}
 
 	testCases := []testCase{
@@ -358,6 +361,62 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestRunFileLimit(t *testing.T) {
+	k := newTestKoanf(false).
+		withExperiment(t).
+		withValidAgeCutoff(t).
+		withVaultToken(t, true).
+		withBearerToken(t).
+		withFileCountLimit(t, 3). // Set a file count limit of 5
+		withDebug(t).             // Enable debug logging to capture the file limit message
+		withTestDcacheServer(t)
+
+	// Redirect stdout to a pipe so we can inspect logs
+	// origStdout := os.Stdout
+	// r, w, err := os.Pipe()
+	// if err != nil {
+	// 	t.Fatalf("Failed to create pipe: %v", err)
+	// }
+	// os.Stdout =
+	b := bytes.NewBuffer(nil)
+	// /pnfs/testexperiment/resilient/jobsub_stage/dir1
+	// Setup logger
+	oldSlog := logger
+	logger = slog.New(slog.NewTextHandler(b, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})) // Redirect logs to our buffer
+	defer func() { logger = oldSlog }() // Restore original logger after test
+
+	// Setup and Deferred cleanup
+	cleanupFuncs := []mockCleanup{
+		writeGoodHtgettoken(t), // Mock a working htgettoken command
+		useFakeExecutable(t, "condor_status", filepath.Join("internal", "testscripts", "condor_status-mock-ads")),                                  // Mock a good condor_status command
+		useFakeExecutable(t, "condor_config_val", filepath.Join("internal", "testscripts", "condor_config_val-SEC_CLIENT_AUTHENTICATION_METHODS")), // Mock a working condor_config_val command
+		useFakeExecutable(t, "condor_q", filepath.Join("internal", "testscripts", "condor_q-mock-ads-empty-pnfs")),                                 // Mock a working condor_q command
+	}
+
+	for _, cleanup := range cleanupFuncs {
+		defer cleanup()
+	}
+
+	// Set up fake idtokens dir
+	fakeGoodIDTokenAuthSetup(t)
+
+	ctx := context.Background()
+	err := run(ctx, k.ko)
+
+	assert.NoError(t, err)
+
+	// Read the output from the buffer
+	output := b.String()
+
+	// Check if the output contains the expected message about file limit
+	expectedMessage := "Directory did not get all files processed, so we will not delete it"
+	if !strings.Contains(string(output), expectedMessage) {
+		t.Errorf("Expected output to contain %q, but it did not. Output: %s", expectedMessage, string(output))
+	}
+}
+
 // A helper struct to more easily adjust the koanf configuration for tests
 // This basically allows us to extend the koanf.Koanf type to add helper methods
 type testKoanf struct {
@@ -391,7 +450,13 @@ func (k *testKoanf) withValidAgeCutoff(t *testing.T) *testKoanf {
 
 func (k *testKoanf) withFileCountLimit(t *testing.T, limit int) *testKoanf {
 	t.Helper()
-	k.ko.Set("totalFileCountLimit", limit)
+	k.ko.Set("dCache.totalFileCountLimit", limit)
+	return k
+}
+
+func (k *testKoanf) withDebug(t *testing.T) *testKoanf {
+	t.Helper()
+	k.ko.Set("debug", true)
 	return k
 }
 

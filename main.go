@@ -342,22 +342,17 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		return fileIsRecent(f, fileAgeCutoff)
 	}
 	filesList, err := dClient.getFilesList(ctx, source, nil, nil, fileIsTooNew)
-	var errFileCountExceeded *errFileCountLimitExceeded
-	var partialSuccessErr *errProcessingFiles
 	var lastFileProcessed string
-	switch {
-	case errors.As(err, &errFileCountExceeded):
-		e := err.(*errFileCountLimitExceeded)
+	if err2, ok := errors.AsType[*errFileCountLimitExceeded](err); ok {
 		funcLogger.Warn("file count limit exceeded. Stopping collecting files now")
-		funcLogger.With("file", e.filename).Debug("Last processed file")
-		lastFileProcessed = e.filename
-	case errors.As(err, &partialSuccessErr):
-		errsLeft := make([]error, 0, len(partialSuccessErr.errors))
+		funcLogger.With("file", (*err2).filename).Debug("Last processed file")
+		lastFileProcessed = (*err2).filename
+	} else if err2, ok := errors.AsType[*errProcessingFiles](err); ok {
+		errsLeft := make([]error, 0, len(err2.errors))
 		// Files flagged for exclusion
-		for _, e := range partialSuccessErr.errors {
-			var er *errFileFlaggedToExclude
-			if errors.As(e, &er) {
-				funcLogger.Warn("file excluded by excludeFunc", "file", er.filename)
+		for _, e := range err2.errors {
+			if err3, ok := errors.AsType[*errFileFlaggedToExclude](e); ok {
+				funcLogger.Warn("file excluded by excludeFunc", "file", err3.filename)
 				continue
 			}
 			errsLeft = append(errsLeft, e) // Keep the other errors to warn about later
@@ -365,7 +360,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		if len(errsLeft) > 0 {
 			funcLogger.Warn("partial success occurred while collecting files", "errors", errsLeft)
 		}
-	case err != nil:
+	} else if err != nil {
 		return fmt.Errorf("error getting dropbox files list: %w", err)
 	}
 

@@ -562,7 +562,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 
 			// If we stopped processing files because we hit the file count limit mid-directory, then we don't know for sure
 			// if we saw all the files in _parent; thus we can stop and leave cleanup of _parent to a future run.
-			if lastFileProcessed != "" && filepath.Dir(lastFileProcessed) == _parent.Name() {
+			if lastFileProcessed != "" && path.Dir(lastFileProcessed) == _parent.Name() {
 				funcLogger.Debug("Parent did not get all files processed, so we will not delete it", "dirName", _parent.Name())
 				break
 			}

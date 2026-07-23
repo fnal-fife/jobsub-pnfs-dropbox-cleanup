@@ -501,5 +501,8 @@ type errFileCountLimitExceeded struct {
 }
 
 func (e *errFileCountLimitExceeded) Error() string {
+	if e.filename == "" {
+		return "file parse limit exceeded"
+	}
 	return fmt.Sprintf("file parse limit exceeded while processing file %s", e.filename)
 }

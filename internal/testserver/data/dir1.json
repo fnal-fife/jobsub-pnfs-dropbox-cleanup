@@ -11,6 +11,28 @@
     "nlink" : 1,
     "mtime" : 1753116816382,
     "mode" : 436
+  }, {
+    "fileName" : "file1b",
+    "fileMimeType" : "application/octet-stream",
+    "labels" : [ ],
+    "size" : 7,
+    "creationTime" : 1753116816356,
+    "fileType" : "REGULAR",
+    "pnfsId" : "9876",
+    "nlink" : 1,
+    "mtime" : 1753116816382,
+    "mode" : 436
+  }, {
+    "fileName" : "dir1a",
+    "fileMimeType" : "application/vnd.dcache.folder",
+    "labels" : [ ],
+    "size" : 512,
+    "creationTime" : 1753116816011,
+    "fileType" : "DIR",
+    "pnfsId" : "1234",
+    "nlink" : 2,
+    "mtime" : 1753116816382,
+    "mode" : 509
   } ],
   "labels" : [ ],
   "size" : 512,

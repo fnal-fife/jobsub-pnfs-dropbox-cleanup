@@ -34,6 +34,9 @@ func TestNewDCacheClient(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			loggingMux.Lock()
+			defer loggingMux.Unlock()
+
 			d := newDCacheClient(tc.token, "/", 0, 0, 0, true)
 			if tc.expectedClientNil {
 				assert.Nil(t, d)
@@ -84,6 +87,8 @@ func TestDcacheClientRemoveFile(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel() // Run tests in parallel
+			loggingMux.Lock()
+			defer loggingMux.Unlock()
 			client := newDCacheClient("test-token", "", -1, 0, 0, true)
 			err := client.removeFile(tc.ctx, tc.urlPath)
 
@@ -217,6 +222,8 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel() // Run tests in parallel
+			loggingMux.Lock()
+			defer loggingMux.Unlock()
 
 			// Default context setup func
 			contextSetupFunc := tc.contextSetupFunc
@@ -456,6 +463,9 @@ func TestDCacheClientSetTokenAuth(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			loggingMux.Lock()
+			defer loggingMux.Unlock()
+
 			d := &dCacheClient{}
 			err := d.setTokenAuth(strings.TrimSpace(tc.token))
 			assert.ErrorIs(t, err, tc.expectedErr)
@@ -533,6 +543,9 @@ func TestSetGetHeaders(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			loggingMux.Lock()
+			defer loggingMux.Unlock()
+
 			d := &dCacheClient{
 				client:   http.DefaultClient,
 				authFunc: tc.authFunc,
@@ -603,6 +616,9 @@ func TestFixAPIEndpoint(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			loggingMux.Lock()
+			defer loggingMux.Unlock()
+
 			result := fixAPIEndpoint(tc.apiEndpoint)
 			assert.Equal(t, tc.expected, result)
 		})
@@ -637,6 +653,9 @@ func TestDCacheClientSetFileCountLimit(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			loggingMux.Lock()
+			defer loggingMux.Unlock()
+
 			d.setFileCountLimit(tc.limit)
 			assert.Equal(t, tc.expectedFileCountLimit, d.fileCountLimit)
 			assert.Equal(t, tc.expectedFileCountLeft, d.fileCountLeft.Load())
@@ -667,6 +686,9 @@ func TestDCacheClientSetRetrySleep(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			loggingMux.Lock()
+			defer loggingMux.Unlock()
+
 			d := &dCacheClient{}
 			d.setRetrySleep(tc.retrySleep)
 			assert.Equal(t, tc.expected, d.retrySleep)
@@ -678,7 +700,7 @@ func TestDCacheClientSetRetrySleep(t *testing.T) {
 
 func createFileEntriesForJobsubStageDir() []*FileEntry {
 	// Need to make some pointers for linking purposes
-	var dir1Entry, dir1File1a *FileEntry
+	var dir1Entry, dir1File1a, dir1File1b, dir1Dir1a *FileEntry
 	dir1Entry = &FileEntry{
 		filename:      "/pnfs/testexperiment/resilient/jobsub_stage/dir1",
 		modified:      time.Unix(1753116816, 382_000_000).UTC(),
@@ -693,7 +715,21 @@ func createFileEntriesForJobsubStageDir() []*FileEntry {
 		containsFiles: nil,
 		parent:        dir1Entry,
 	}
-	dir1Entry.containsFiles = append(dir1Entry.containsFiles, dir1File1a)
+	dir1File1b = &FileEntry{
+		filename:      "/pnfs/testexperiment/resilient/jobsub_stage/dir1/file1b",
+		modified:      time.Unix(1753116816, 382_000_000).UTC(),
+		isDirectory:   false,
+		containsFiles: nil,
+		parent:        dir1Entry,
+	}
+	dir1Dir1a = &FileEntry{
+		filename:      "/pnfs/testexperiment/resilient/jobsub_stage/dir1/dir1a",
+		modified:      time.Unix(1753116816, 382_000_000).UTC(),
+		isDirectory:   true,
+		containsFiles: nil,
+		parent:        dir1Entry,
+	}
+	dir1Entry.containsFiles = append(dir1Entry.containsFiles, dir1File1a, dir1File1b, dir1Dir1a)
 
 	return []*FileEntry{
 		{
@@ -711,6 +747,8 @@ func createFileEntriesForJobsubStageDir() []*FileEntry {
 			parent:        nil,
 		},
 		dir1File1a,
+		dir1File1b,
+		dir1Dir1a,
 		dir1Entry,
 		{
 			filename:      "/pnfs/testexperiment/resilient/jobsub_stage/dir2",

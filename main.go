@@ -528,13 +528,6 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			continue
 		}
 
-		// If we stopped processing files because we hit the file count limit mid-directory, then we don't know for sure
-		// if we saw all the files in this directory; thus we can stop and leave cleanup of the directory to a future run.
-		if lastFileProcessed != "" && path.Dir(lastFileProcessed) == filename {
-			funcLogger.Debug("Directory did not get all files processed, so we will not delete it", "dirName", filename)
-			break
-		}
-
 		// Don't delete the experiment area. This should never happen, but the safeguard is here
 		// just in case
 		if filename == path.Join("/pnfs/", exptArea) {

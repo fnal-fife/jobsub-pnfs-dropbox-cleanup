@@ -22,6 +22,8 @@ import (
 // /api/testexperiment/resilient/jobsub_stage/file1b (DELETE)
 // /api/testexperiment/resilient/jobsub_stage/dir1 (GET, DELETE)
 // /api/testexperiment/resilient/jobsub_stage/dir1/file1a (DELETE)
+// /api/testexperiment/resilient/jobsub_stage/dir1/file1b (DELETE)
+// /api/testexperiment/resilient/jobsub_stage/dir1/dir1a	(GET, DELETE)
 // /api/testexperiment/resilient/jobsub_stage/dir2 (GET, DELETE)
 //
 // Special cases for certain tests:
@@ -54,6 +56,8 @@ func StartServer(ctx context.Context) (shutdown chan struct{}, startupErr error)
 	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/file1b", handleFile1b)
 	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/dir1", handleDir1)
 	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/dir1/file1a", handleDir1File1a)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/dir1/file1b", handleDir1File1b)
+	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/dir1/dir1a", handleDir1Dir1a)
 	mux.HandleFunc("/api/testexperiment/resilient/jobsub_stage/dir2", handleDir2)
 
 	// Special cases for certain tests:
@@ -183,6 +187,34 @@ func handleDir1File1a(w http.ResponseWriter, r *http.Request) {
 	// /api/testexperiment/resilient/jobsub_stage/dir1/file1a
 	if r.Method == http.MethodDelete {
 		slog.Info("Received DELETE request for /testexperiment/resilient/jobsub_stage/dir1/file1a")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+}
+
+func handleDir1File1b(w http.ResponseWriter, r *http.Request) {
+	// /api/testexperiment/resilient/jobsub_stage/dir1/file1b
+	if r.Method == http.MethodDelete {
+		slog.Info("Received DELETE request for /testexperiment/resilient/jobsub_stage/dir1/file1b")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+}
+
+//go:embed data/dir1_dir1a.json
+var getDir1Dir1aResponse string
+
+func handleDir1Dir1a(w http.ResponseWriter, r *http.Request) {
+	// /api/testexperiment/resilient/jobsub_stage/dir1/dir1a
+
+	if r.Method == http.MethodGet {
+		slog.Info("Received GET request for /testexperiment/resilient/jobsub_stage/dir1/dir1a")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, getDir1Dir1aResponse)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		slog.Info("Received DELETE request for /testexperiment/resilient/jobsub_stage/dir1/dir1a")
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

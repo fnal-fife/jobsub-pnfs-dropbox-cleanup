@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/knadh/koanf/v2"
@@ -15,6 +16,8 @@ import (
 
 	"github.com/fnal-fife/jobsub-pnfs-dropbox-cleanup/internal/testserver"
 )
+
+var loggingMux sync.Mutex // Use this mutex if you're trying to run a test in parallel, or want to modify the global logger
 
 func TestMain(m *testing.M) {
 	// Setup code here if needed
@@ -367,25 +370,23 @@ func TestRunFileLimit(t *testing.T) {
 		withValidAgeCutoff(t).
 		withVaultToken(t, true).
 		withBearerToken(t).
-		withFileCountLimit(t, 3). // Set a file count limit of 5
-		withDebug(t).             // Enable debug logging to capture the file limit message
+		withFileCountLimit(t, 5). // Set a file count limit of 5.  With our test server, this should trigger the limit after we process
+		// /api/testexperiment/resilient/jobsub_stage/dir1/dir1a. Since /api/testexperiment/resilient/jobsub_stage/dir1 will then be "not
+		// completely processed", our test should show that we skip trying to delete /api/testexperiment/resilient/jobsub_stage/dir1.
+		withDebug(t). // Enable debug logging to capture the file limit message
 		withTestDcacheServer(t)
 
-	// Redirect stdout to a pipe so we can inspect logs
-	// origStdout := os.Stdout
-	// r, w, err := os.Pipe()
-	// if err != nil {
-	// 	t.Fatalf("Failed to create pipe: %v", err)
-	// }
-	// os.Stdout =
+	// Redirect stdout to a bytes.Buffer so we can inspect logs
+	loggingMux.Lock()
+	oldLogger := logger
 	b := bytes.NewBuffer(nil)
-	// /pnfs/testexperiment/resilient/jobsub_stage/dir1
-	// Setup logger
-	oldSlog := logger
 	logger = slog.New(slog.NewTextHandler(b, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	})) // Redirect logs to our buffer
-	defer func() { logger = oldSlog }() // Restore original logger after test
+		Level: slog.LevelDebug, // Turn on debug for this test
+	}))
+	defer func() {
+		logger = oldLogger // Restore original logger after test
+		loggingMux.Unlock()
+	}()
 
 	// Setup and Deferred cleanup
 	cleanupFuncs := []mockCleanup{
@@ -411,7 +412,7 @@ func TestRunFileLimit(t *testing.T) {
 	output := b.String()
 
 	// Check if the output contains the expected message about file limit
-	expectedMessage := "Directory did not get all files processed, so we will not delete it"
+	expectedMessage := "Parent did not get all files processed, so we will not delete it"
 	if !strings.Contains(string(output), expectedMessage) {
 		t.Errorf("Expected output to contain %q, but it did not. Output: %s", expectedMessage, string(output))
 	}

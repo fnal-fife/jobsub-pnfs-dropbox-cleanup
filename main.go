@@ -516,8 +516,9 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	}
 
 	if len(fileMap) == 0 {
+		funcLogger.Info("No more files to delete")
 		promDuration.WithLabelValues("deleteFiles").Set(time.Since(startDeleteFiles).Seconds())
-		return errNoFilesToDelete
+		return nil
 	}
 
 	// 4b. Delete empty directories

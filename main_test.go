@@ -276,7 +276,7 @@ func TestRun(t *testing.T) {
 				}
 				return k.ko, cleanupFunc
 			},
-			errIs: errNoFilesToDelete,
+			assertNoError: true,
 		},
 		{
 			description: "NOT test mode - one file, but can't be deleted",

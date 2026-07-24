@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,8 +35,7 @@ func TestNewDCacheClient(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
-			loggingMux.Lock()
-			defer loggingMux.Unlock()
+			checkMuxLock(&loggingMux)
 
 			d := newDCacheClient(tc.token, "/", 0, 0, 0, true)
 			if tc.expectedClientNil {
@@ -87,8 +87,7 @@ func TestDcacheClientRemoveFile(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel() // Run tests in parallel
-			loggingMux.Lock()
-			defer loggingMux.Unlock()
+			checkMuxLock(&loggingMux)
 			client := newDCacheClient("test-token", "", -1, 0, 0, true)
 			err := client.removeFile(tc.ctx, tc.urlPath)
 
@@ -222,8 +221,7 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel() // Run tests in parallel
-			loggingMux.Lock()
-			defer loggingMux.Unlock()
+			checkMuxLock(&loggingMux)
 
 			// Default context setup func
 			contextSetupFunc := tc.contextSetupFunc
@@ -463,8 +461,7 @@ func TestDCacheClientSetTokenAuth(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
-			loggingMux.Lock()
-			defer loggingMux.Unlock()
+			checkMuxLock(&loggingMux)
 
 			d := &dCacheClient{}
 			err := d.setTokenAuth(strings.TrimSpace(tc.token))
@@ -543,8 +540,7 @@ func TestSetGetHeaders(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
-			loggingMux.Lock()
-			defer loggingMux.Unlock()
+			checkMuxLock(&loggingMux)
 
 			d := &dCacheClient{
 				client:   http.DefaultClient,
@@ -616,8 +612,7 @@ func TestFixAPIEndpoint(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
-			loggingMux.Lock()
-			defer loggingMux.Unlock()
+			checkMuxLock(&loggingMux)
 
 			result := fixAPIEndpoint(tc.apiEndpoint)
 			assert.Equal(t, tc.expected, result)
@@ -653,8 +648,7 @@ func TestDCacheClientSetFileCountLimit(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
-			loggingMux.Lock()
-			defer loggingMux.Unlock()
+			checkMuxLock(&loggingMux)
 
 			d.setFileCountLimit(tc.limit)
 			assert.Equal(t, tc.expectedFileCountLimit, d.fileCountLimit)
@@ -686,8 +680,7 @@ func TestDCacheClientSetRetrySleep(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
-			loggingMux.Lock()
-			defer loggingMux.Unlock()
+			checkMuxLock(&loggingMux)
 
 			d := &dCacheClient{}
 			d.setRetrySleep(tc.retrySleep)
@@ -778,4 +771,12 @@ func createFileEntriesForInvalidFileDir() []*FileEntry {
 			parent:        nil,
 		},
 	}
+}
+
+// Checks to see if the mux is locked. If so, it will block until the mux is free.  If not, it will immediately unlock the mutex and return
+// The point of this is to have an alternative to mutex.TryLock, which keeps the mutex locked.
+func checkMuxLock(mux *sync.Mutex) {
+	mux.Lock()
+	func() {}() // Added here so that go vet doesn't complain about an empty critical section
+	mux.Unlock()
 }

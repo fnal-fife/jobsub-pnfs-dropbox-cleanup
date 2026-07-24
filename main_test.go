@@ -17,7 +17,9 @@ import (
 	"github.com/fnal-fife/jobsub-pnfs-dropbox-cleanup/internal/testserver"
 )
 
-var loggingMux sync.Mutex // Use this mutex if you're trying to run a test in parallel, or want to modify the global logger
+// Use this mutex if you're trying to run a test in parallel, or want to modify the global logger.
+// If you just want to run a test in parallel, without logging modifications, use checkMuxLock(&loggingMux) to ensure that the mutex is not locked by another test.
+var loggingMux sync.Mutex
 
 func TestMain(m *testing.M) {
 	// Setup code here if needed
@@ -48,7 +50,6 @@ func TestRun(t *testing.T) {
 		errIs                  error
 		errContains            string
 		expectedFileDeleteErrs []string
-		extraTests             []func(t *testing.T)
 	}
 
 	testCases := []testCase{
@@ -376,7 +377,7 @@ func TestRunFileLimit(t *testing.T) {
 		withDebug(t). // Enable debug logging to capture the file limit message
 		withTestDcacheServer(t)
 
-	// Redirect stdout to a bytes.Buffer so we can inspect logs
+	// Redirect logs to a bytes.Buffer so we can inspect logs
 	loggingMux.Lock()
 	oldLogger := logger
 	b := bytes.NewBuffer(nil)

@@ -725,7 +725,8 @@ func createFileEntriesForJobsubStageDir() []*FileEntry {
 func createFileEntriesForJobsubStageDirInterruptMidDir() []*FileEntry {
 	sl := createFileEntriesForJobsubStageDir()[:3]
 	last := sl[len(sl)-1]
-	sl[len(sl)-1] = last // Update the last entry
+	last.parent.containsFiles = nil // Simulate an interrupted directory listing
+	sl[len(sl)-1] = last            // Update the last entry
 	return sl
 }
 

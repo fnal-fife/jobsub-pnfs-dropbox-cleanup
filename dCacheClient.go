@@ -227,8 +227,10 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 				var err2 *errFileCountLimitExceeded
 				if errors.As(err, &err2) {
 					funcLogger.Warn("File count limit exceeded mid-directory.", "directory", entry.filename)
-					entry.containsFiles = files
-					dirContents = append(dirContents, files...) // Add the files we got back from the getFilesList call
+					// We don't add the files to the entry at this point, because the current entry represents
+					// a directory that we didn't finish processing, so we don't want to add it to the dirContents list. Instead, we just add
+					// the files we did process, and return
+					dirContents = append(dirContents, files...) // Add the files we got back from the getFilesList call, which should be children of entry
 					return dirContents, err2                    // Return what we have
 				}
 

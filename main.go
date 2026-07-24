@@ -577,7 +577,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			// just in case
 			if _parent.Name() == path.Join("/pnfs/", exptArea) {
 				funcLogger.Info("Skipping experiment area", "dirName", _parent.Name())
-				continue
+				break
 			}
 
 			// Delete parent directory, since we've established that it's empty

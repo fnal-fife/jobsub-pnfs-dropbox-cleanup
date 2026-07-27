@@ -224,8 +224,7 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 			if err != nil {
 				// If we hit the file count limit mid-directory, add the files that we got back from the getFilesList call,
 				// Then return what we have
-				var err2 *errFileCountLimitExceeded
-				if errors.As(err, &err2) {
+				if err2, ok := errors.AsType[*errFileCountLimitExceeded](err); ok {
 					funcLogger.Warn("File count limit exceeded mid-directory.", "directory", entry.filename)
 					// We don't add the files to the entry at this point, because the current entry represents
 					// a directory that we didn't finish processing, so we don't want to add it to the dirContents list. Instead, we just add
@@ -235,19 +234,19 @@ func (d *dCacheClient) getFilesList(ctx context.Context, source string, dirConte
 				}
 
 				// If we excluded some files, we should still add any entries we got back from the recursive call
-				var errProcFiles *errProcessingFiles
 				excludedFiles := false
-				if errors.As(err, &errProcFiles) {
+				if errProcFiles, ok := errors.AsType[*errProcessingFiles](err); ok {
 					// See if we're excluding any files because they were flagged by the excludeFunc. If so, some files
 					// might still need to get added to the dirContents, so we should not return an error or skip the
 					// directory
 					for _, e := range errProcFiles.errors {
-						var er *errFileFlaggedToExclude
-						if errors.As(e, &er) {
+						if er, ok := errors.AsType[*errFileFlaggedToExclude](e); ok {
 							excludedFiles = true
+							errs = append(errs, er)
+							continue
 						}
 						// Otherwise, add these errors to the errs slice
-						errs = append(errs, er)
+						errs = append(errs, e)
 					}
 				}
 

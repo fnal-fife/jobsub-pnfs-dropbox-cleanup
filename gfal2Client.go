@@ -154,7 +154,7 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 	for scanner.Scan() {
 		funcLogger.Debug("File count left", "remaining", g.fileCountLeft.Load())
 		if g.fileCountLeft.Load() == 0 {
-			return dirContents, errFileCountLimitExceeded
+			return dirContents, &errFileCountLimitExceeded{}
 		}
 		g.fileCountLeft.Add(-1)
 		line := scanner.Text()
@@ -162,7 +162,8 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 		entry, err := g.fileListingToFileEntry(line, func(s string) string {
 			return path.Join("/pnfs", sourceURL.Path, s)
 		})
-		if errors.Is(err, errFileCountLimitExceeded) {
+		var err2 *errFileCountLimitExceeded
+		if errors.As(err, &err2) {
 			// We exceeded our file count limit, so we should stop
 			funcLogger.Debug("File count limit exceeded, stopping")
 			return dirContents, err
@@ -193,7 +194,7 @@ func (g *gfal2Client) getFilesList(ctx context.Context, source string, dirConten
 				// left. So we will also check to make sure we have at least defaultLenDirPlusFile spots left in the counter before
 				// resetting it.  If we have fewer spots than that left, we'll just leave the counter as is, and be OK with deleting fewer
 				// than g.fileCountLimit files for the current run
-				if errors.Is(err, errFileCountLimitExceeded) {
+				if errors.As(err, &err2) {
 					newCounterVal := int32(int(g.fileCountLimit) - len(dirContents))
 					if int(newCounterVal) > defaultLenDirPlusFile {
 						g.fileCountLeft.Store(newCounterVal)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,6 +35,8 @@ func TestNewDCacheClient(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			checkMuxLock(&loggingMux)
+
 			d := newDCacheClient(tc.token, "/", 0, 0, 0, true)
 			if tc.expectedClientNil {
 				assert.Nil(t, d)
@@ -84,6 +87,7 @@ func TestDcacheClientRemoveFile(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel() // Run tests in parallel
+			checkMuxLock(&loggingMux)
 			client := newDCacheClient("test-token", "", -1, 0, 0, true)
 			err := client.removeFile(tc.ctx, tc.urlPath)
 
@@ -195,7 +199,8 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 			dirContents:    nil,
 			parent:         nil,
 			errCheckFunc: func(err error) bool {
-				return assert.ErrorContains(t, err, errFileCountLimitExceeded.Error())
+				e := &errFileCountLimitExceeded{filename: "/pnfs/testexperiment/resilient/jobsub_stage/file1"}
+				return assert.ErrorContains(t, err, e.Error())
 			},
 			expectedEntries: createFileEntriesForJobsubStageDir()[:1],
 		},
@@ -206,7 +211,8 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 			dirContents:    nil,
 			parent:         nil,
 			errCheckFunc: func(err error) bool {
-				return assert.ErrorContains(t, err, errFileCountLimitExceeded.Error())
+				e := &errFileCountLimitExceeded{filename: "/pnfs/testexperiment/resilient/jobsub_stage/dir1/file1a"}
+				return assert.ErrorContains(t, err, e.Error())
 			},
 			expectedEntries: createFileEntriesForJobsubStageDirInterruptMidDir(),
 		},
@@ -215,6 +221,7 @@ func TestDCacheClientGetFilesList(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel() // Run tests in parallel
+			checkMuxLock(&loggingMux)
 
 			// Default context setup func
 			contextSetupFunc := tc.contextSetupFunc
@@ -454,6 +461,8 @@ func TestDCacheClientSetTokenAuth(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			checkMuxLock(&loggingMux)
+
 			d := &dCacheClient{}
 			err := d.setTokenAuth(strings.TrimSpace(tc.token))
 			assert.ErrorIs(t, err, tc.expectedErr)
@@ -531,6 +540,8 @@ func TestSetGetHeaders(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			checkMuxLock(&loggingMux)
+
 			d := &dCacheClient{
 				client:   http.DefaultClient,
 				authFunc: tc.authFunc,
@@ -601,6 +612,8 @@ func TestFixAPIEndpoint(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			checkMuxLock(&loggingMux)
+
 			result := fixAPIEndpoint(tc.apiEndpoint)
 			assert.Equal(t, tc.expected, result)
 		})
@@ -635,6 +648,8 @@ func TestDCacheClientSetFileCountLimit(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			checkMuxLock(&loggingMux)
+
 			d.setFileCountLimit(tc.limit)
 			assert.Equal(t, tc.expectedFileCountLimit, d.fileCountLimit)
 			assert.Equal(t, tc.expectedFileCountLeft, d.fileCountLeft.Load())
@@ -665,6 +680,8 @@ func TestDCacheClientSetRetrySleep(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			t.Parallel()
+			checkMuxLock(&loggingMux)
+
 			d := &dCacheClient{}
 			d.setRetrySleep(tc.retrySleep)
 			assert.Equal(t, tc.expected, d.retrySleep)
@@ -676,7 +693,7 @@ func TestDCacheClientSetRetrySleep(t *testing.T) {
 
 func createFileEntriesForJobsubStageDir() []*FileEntry {
 	// Need to make some pointers for linking purposes
-	var dir1Entry, dir1File1a *FileEntry
+	var dir1Entry, dir1File1a, dir1File1b, dir1Dir1a *FileEntry
 	dir1Entry = &FileEntry{
 		filename:      "/pnfs/testexperiment/resilient/jobsub_stage/dir1",
 		modified:      time.Unix(1753116816, 382_000_000).UTC(),
@@ -691,7 +708,21 @@ func createFileEntriesForJobsubStageDir() []*FileEntry {
 		containsFiles: nil,
 		parent:        dir1Entry,
 	}
-	dir1Entry.containsFiles = append(dir1Entry.containsFiles, dir1File1a)
+	dir1File1b = &FileEntry{
+		filename:      "/pnfs/testexperiment/resilient/jobsub_stage/dir1/file1b",
+		modified:      time.Unix(1753116816, 382_000_000).UTC(),
+		isDirectory:   false,
+		containsFiles: nil,
+		parent:        dir1Entry,
+	}
+	dir1Dir1a = &FileEntry{
+		filename:      "/pnfs/testexperiment/resilient/jobsub_stage/dir1/dir1a",
+		modified:      time.Unix(1753116816, 382_000_000).UTC(),
+		isDirectory:   true,
+		containsFiles: nil,
+		parent:        dir1Entry,
+	}
+	dir1Entry.containsFiles = append(dir1Entry.containsFiles, dir1File1a, dir1File1b, dir1Dir1a)
 
 	return []*FileEntry{
 		{
@@ -709,6 +740,8 @@ func createFileEntriesForJobsubStageDir() []*FileEntry {
 			parent:        nil,
 		},
 		dir1File1a,
+		dir1File1b,
+		dir1Dir1a,
 		dir1Entry,
 		{
 			filename:      "/pnfs/testexperiment/resilient/jobsub_stage/dir2",
@@ -738,4 +771,12 @@ func createFileEntriesForInvalidFileDir() []*FileEntry {
 			parent:        nil,
 		},
 	}
+}
+
+// Checks to see if the mux is locked. If so, it will block until the mux is free.  If not, it will immediately unlock the mutex and return
+// The point of this is to have an alternative to mutex.TryLock, which keeps the mutex locked.
+func checkMuxLock(mux *sync.Mutex) {
+	mux.Lock()
+	func() {}() // Added here so that go vet doesn't complain about an empty critical section
+	mux.Unlock()
 }

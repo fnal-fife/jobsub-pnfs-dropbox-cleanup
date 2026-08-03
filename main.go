@@ -342,17 +342,17 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		return fileIsRecent(f, fileAgeCutoff)
 	}
 	filesList, err := dClient.getFilesList(ctx, source, nil, nil, fileIsTooNew)
-	var partialSuccessErr *errProcessingFiles
-	switch {
-	case errors.Is(err, errFileCountLimitExceeded):
+	var lastFileProcessed string
+	if err2, ok := errors.AsType[*errFileCountLimitExceeded](err); ok {
 		funcLogger.Warn("file count limit exceeded. Stopping collecting files now")
-	case errors.As(err, &partialSuccessErr):
-		errsLeft := make([]error, 0, len(partialSuccessErr.errors))
+		funcLogger.With("file", (*err2).filename).Debug("Last processed file")
+		lastFileProcessed = (*err2).filename
+	} else if err2, ok := errors.AsType[*errProcessingFiles](err); ok {
+		errsLeft := make([]error, 0, len(err2.errors))
 		// Files flagged for exclusion
-		for _, e := range partialSuccessErr.errors {
-			var er *errFileFlaggedToExclude
-			if errors.As(e, &er) {
-				funcLogger.Warn("file excluded by excludeFunc", "file", er.filename)
+		for _, e := range err2.errors {
+			if err3, ok := errors.AsType[*errFileFlaggedToExclude](e); ok {
+				funcLogger.Warn("file excluded by excludeFunc", "file", err3.filename)
 				continue
 			}
 			errsLeft = append(errsLeft, e) // Keep the other errors to warn about later
@@ -360,7 +360,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 		if len(errsLeft) > 0 {
 			funcLogger.Warn("partial success occurred while collecting files", "errors", errsLeft)
 		}
-	case err != nil:
+	} else if err != nil {
 		return fmt.Errorf("error getting dropbox files list: %w", err)
 	}
 
@@ -516,8 +516,9 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 	}
 
 	if len(fileMap) == 0 {
+		funcLogger.Info("No more files to delete")
 		promDuration.WithLabelValues("deleteFiles").Set(time.Since(startDeleteFiles).Seconds())
-		return errNoFilesToDelete
+		return nil
 	}
 
 	// 4b. Delete empty directories
@@ -560,6 +561,13 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 				},
 			)
 
+			// If we stopped processing files because we hit the file count limit mid-directory, then we don't know for sure
+			// if we saw all the files in _parent; thus we can stop and leave cleanup of _parent to a future run.
+			if lastFileProcessed != "" && path.Dir(lastFileProcessed) == _parent.Name() {
+				funcLogger.Debug("Parent did not get all files processed, so we will not delete it", "dirName", _parent.Name())
+				break
+			}
+
 			// Check if the parent is empty. If not, we can stop
 			if len(_parent.containsFiles) != 0 {
 				funcLogger.Debug("Parent is not empty, so we will not delete it", "dirName", _parent.Name())
@@ -569,7 +577,7 @@ func run(ctx context.Context, k *koanf.Koanf) error {
 			// just in case
 			if _parent.Name() == path.Join("/pnfs/", exptArea) {
 				funcLogger.Info("Skipping experiment area", "dirName", _parent.Name())
-				continue
+				break
 			}
 
 			// Delete parent directory, since we've established that it's empty

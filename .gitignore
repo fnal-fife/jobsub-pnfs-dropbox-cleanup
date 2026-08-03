@@ -4,3 +4,7 @@ jobsub-pnfs-dropbox-cleanup
 # Common development artifacts
 *.rpm
 .vscode/*
+jobsub-pnfs-dropbox-cleanup-*/*
+jobsub-pnfs-dropbox-cleanup-*.tar.gz
+
+

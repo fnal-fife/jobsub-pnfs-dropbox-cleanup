@@ -1,5 +1,5 @@
 NAME = jobsub-pnfs-dropbox-cleanup
-VERSION = v0.1.6
+VERSION = v0.1.7
 ROOTDIR = $(shell pwd)
 BUILD = $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 rpmVersion := $(subst v,,$(VERSION))
